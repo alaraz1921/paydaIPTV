@@ -1,6 +1,7 @@
 package com.payda.iptv.ui.playlist
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -40,9 +41,13 @@ import com.payda.iptv.data.Channel
 @Composable
 fun PlayerScreen(
     channel: Channel,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BackHandler(onBack = onBack)
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var playbackMessage by remember(channel.streamUrl) { mutableStateOf("Cargando ${channel.name}...") }
@@ -129,6 +134,12 @@ fun PlayerScreen(
         ) {
             Button(onClick = onBack) {
                 Text("Volver")
+            }
+            Button(
+                onClick = onToggleFavorite,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(if (isFavorite) "Quitar favorito" else "Marcar favorito")
             }
             Text(
                 text = channel.name,

@@ -33,6 +33,7 @@ fun PlaylistScreen(
     playlistUrl: String,
     onPlaylistUrlChange: (String) -> Unit,
     isLoading: Boolean,
+    loadingMessage: String?,
     errorMessage: String?,
     onLoadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
@@ -103,6 +104,14 @@ fun PlaylistScreen(
         Spacer(modifier = Modifier.height(16.dp))
         if (isLoading) {
             CircularProgressIndicator()
+            if (!loadingMessage.isNullOrBlank()) {
+                Text(
+                    text = loadingMessage,
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
         if (!clipboardMessage.isNullOrBlank()) {
             Text(

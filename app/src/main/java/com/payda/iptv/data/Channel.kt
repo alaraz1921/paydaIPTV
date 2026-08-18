@@ -8,3 +8,9 @@ data class Channel(
     val tvgId: String? = null,
     val tvgName: String? = null,
 )
+
+fun Channel.stableFavoriteId(): String {
+    return tvgId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: streamUrl.trim().takeIf { it.isNotEmpty() }
+        ?: "${name.trim()}|${streamUrl.trim()}"
+}

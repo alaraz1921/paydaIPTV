@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.payda.iptv.data.Channel
+import com.payda.iptv.data.stableFavoriteId
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,22 +48,30 @@ import kotlinx.coroutines.withContext
 fun ChannelListScreen(
     channels: List<Channel>,
     selectedCategoryName: String,
+    searchQuery: String,
+    favoriteChannelIds: Set<String>,
     playlistUrl: String,
     onCategorySelected: (String) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onClearSearch: () -> Unit,
+    onToggleFavorite: (Channel) -> Unit,
     onChannelSelected: (Channel) -> Unit,
     onChangePlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val categories = remember(channels) { buildChannelCategories(channels) }
+    val categories = remember(channels, favoriteChannelIds) {
+        buildChannelCategories(channels, favoriteChannelIds)
+    }
     val selectedCategory = remember(categories, selectedCategoryName) {
         categories.firstOrNull { it.name == selectedCategoryName } ?: categories.first()
     }
-    val visibleChannels = remember(channels, selectedCategory) {
-        if (selectedCategory.name == AllCategoryName) {
-            channels
-        } else {
-            channels.filter { normalizedCategoryName(it.group) == selectedCategory.name }
-        }
+    val visibleChannels = remember(channels, selectedCategory, searchQuery, favoriteChannelIds) {
+        filterChannels(
+            channels = channels,
+            selectedCategoryName = selectedCategory.name,
+            searchQuery = searchQuery,
+            favoriteChannelIds = favoriteChannelIds,
+        )
     }
 
     Column(
@@ -89,6 +100,21 @@ fun ChannelListScreen(
             Text("Cambiar lista")
         }
         Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Buscar canal") },
+            singleLine = true,
+            trailingIcon = {
+                if (searchQuery.isNotBlank()) {
+                    TextButton(onClick = onClearSearch) {
+                        Text("Limpiar")
+                    }
+                }
+            },
+        )
+        Spacer(modifier = Modifier.height(12.dp))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -105,9 +131,16 @@ fun ChannelListScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (visibleChannels.isEmpty()) {
+                item {
+                    EmptyChannelState(selectedCategory.name, searchQuery)
+                }
+            }
             items(visibleChannels) { channel ->
                 ChannelRow(
                     channel = channel,
+                    isFavorite = channel.stableFavoriteId() in favoriteChannelIds,
+                    onToggleFavorite = { onToggleFavorite(channel) },
                     onClick = { onChannelSelected(channel) },
                 )
             }
@@ -118,6 +151,8 @@ fun ChannelListScreen(
 @Composable
 private fun ChannelRow(
     channel: Channel,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -157,8 +192,34 @@ private fun ChannelRow(
                     )
                 }
             }
+            TextButton(onClick = onToggleFavorite) {
+                Text(if (isFavorite) "Quitar" else "Favorito")
+            }
         }
     }
+}
+
+@Composable
+private fun EmptyChannelState(
+    selectedCategoryName: String,
+    searchQuery: String,
+    modifier: Modifier = Modifier,
+) {
+    val message = when {
+        selectedCategoryName == FavoriteCategoryName && searchQuery.isBlank() ->
+            "Todavia no tienes canales favoritos."
+        searchQuery.isNotBlank() ->
+            "No hay canales que coincidan con la busqueda."
+        else ->
+            "No hay canales en esta categoria."
+    }
+
+    Text(
+        text = message,
+        modifier = modifier.padding(24.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium,
+    )
 }
 
 @Composable
@@ -202,6 +263,7 @@ private suspend fun loadImage(url: String): ImageBitmap? = withContext(Dispatche
 }
 
 internal const val AllCategoryName = "Todos"
+internal const val FavoriteCategoryName = "Favoritos"
 internal const val UncategorizedName = "Sin categoria"
 
 internal data class ChannelCategory(
@@ -209,17 +271,44 @@ internal data class ChannelCategory(
     val count: Int,
 )
 
-internal fun buildChannelCategories(channels: List<Channel>): List<ChannelCategory> {
+internal fun buildChannelCategories(
+    channels: List<Channel>,
+    favoriteChannelIds: Set<String> = emptySet(),
+): List<ChannelCategory> {
     val categoryCounts = linkedMapOf<String, Int>()
     channels.forEach { channel ->
         val categoryName = normalizedCategoryName(channel.group)
         categoryCounts[categoryName] = categoryCounts.getOrDefault(categoryName, 0) + 1
     }
 
-    return listOf(ChannelCategory(AllCategoryName, channels.size)) +
+    return listOf(
+        ChannelCategory(AllCategoryName, channels.size),
+        ChannelCategory(FavoriteCategoryName, channels.count { it.stableFavoriteId() in favoriteChannelIds }),
+    ) +
         categoryCounts.map { (name, count) -> ChannelCategory(name, count) }
 }
 
 internal fun normalizedCategoryName(group: String?): String {
     return group?.trim()?.takeIf { it.isNotEmpty() } ?: UncategorizedName
+}
+
+internal fun filterChannels(
+    channels: List<Channel>,
+    selectedCategoryName: String,
+    searchQuery: String,
+    favoriteChannelIds: Set<String>,
+): List<Channel> {
+    val trimmedQuery = searchQuery.trim()
+    return channels.asSequence()
+        .filter { channel ->
+            when (selectedCategoryName) {
+                AllCategoryName -> true
+                FavoriteCategoryName -> channel.stableFavoriteId() in favoriteChannelIds
+                else -> normalizedCategoryName(channel.group) == selectedCategoryName
+            }
+        }
+        .filter { channel ->
+            trimmedQuery.isBlank() || channel.name.contains(trimmedQuery, ignoreCase = true)
+        }
+        .toList()
 }
