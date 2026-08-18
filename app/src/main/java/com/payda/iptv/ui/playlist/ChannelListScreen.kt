@@ -15,15 +15,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,11 +44,25 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ChannelListScreen(
     channels: List<Channel>,
+    selectedCategoryName: String,
     playlistUrl: String,
+    onCategorySelected: (String) -> Unit,
     onChannelSelected: (Channel) -> Unit,
     onChangePlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val categories = remember(channels) { buildChannelCategories(channels) }
+    val selectedCategory = remember(categories, selectedCategoryName) {
+        categories.firstOrNull { it.name == selectedCategoryName } ?: categories.first()
+    }
+    val visibleChannels = remember(channels, selectedCategory) {
+        if (selectedCategory.name == AllCategoryName) {
+            channels
+        } else {
+            channels.filter { normalizedCategoryName(it.group) == selectedCategory.name }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -56,7 +73,7 @@ fun ChannelListScreen(
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            text = "${channels.size} canales cargados",
+            text = "${visibleChannels.size} de ${channels.size} canales",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -72,11 +89,23 @@ fun ChannelListScreen(
             Text("Cambiar lista")
         }
         Spacer(modifier = Modifier.height(12.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(categories, key = { it.name }) { category ->
+                FilterChip(
+                    selected = category.name == selectedCategory.name,
+                    onClick = { onCategorySelected(category.name) },
+                    label = { Text("${category.name} (${category.count})") },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(channels) { channel ->
+            items(visibleChannels) { channel ->
                 ChannelRow(
                     channel = channel,
                     onClick = { onChannelSelected(channel) },
@@ -170,4 +199,27 @@ private suspend fun loadImage(url: String): ImageBitmap? = withContext(Dispatche
             BitmapFactory.decodeStream(input)?.asImageBitmap()
         }
     }.getOrNull()
+}
+
+internal const val AllCategoryName = "Todos"
+internal const val UncategorizedName = "Sin categoria"
+
+internal data class ChannelCategory(
+    val name: String,
+    val count: Int,
+)
+
+internal fun buildChannelCategories(channels: List<Channel>): List<ChannelCategory> {
+    val categoryCounts = linkedMapOf<String, Int>()
+    channels.forEach { channel ->
+        val categoryName = normalizedCategoryName(channel.group)
+        categoryCounts[categoryName] = categoryCounts.getOrDefault(categoryName, 0) + 1
+    }
+
+    return listOf(ChannelCategory(AllCategoryName, channels.size)) +
+        categoryCounts.map { (name, count) -> ChannelCategory(name, count) }
+}
+
+internal fun normalizedCategoryName(group: String?): String {
+    return group?.trim()?.takeIf { it.isNotEmpty() } ?: UncategorizedName
 }

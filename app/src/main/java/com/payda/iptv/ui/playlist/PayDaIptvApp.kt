@@ -17,9 +17,10 @@ private const val SamplePlaylistUrl =
 fun PayDaIptvApp() {
     val repository = remember { M3uRepository() }
     val coroutineScope = rememberCoroutineScope()
-    var playlistUrl by remember { mutableStateOf(SamplePlaylistUrl) }
+    var playlistUrl by remember { mutableStateOf("") }
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+    var selectedCategory by remember { mutableStateOf(AllCategoryName) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -27,11 +28,11 @@ fun PayDaIptvApp() {
         null -> {
             if (channels.isEmpty()) {
                 PlaylistScreen(
-                    playlistUrl = playlistUrl,
-                    onPlaylistUrlChange = {
-                        playlistUrl = it
-                        errorMessage = null
-                    },
+                        playlistUrl = playlistUrl,
+                        onPlaylistUrlChange = {
+                            playlistUrl = it
+                            errorMessage = null
+                        },
                     isLoading = isLoading,
                     errorMessage = errorMessage,
                     onLoadPlaylist = {
@@ -50,6 +51,7 @@ fun PayDaIptvApp() {
                                         errorMessage = "La lista no contiene canales validos."
                                     } else {
                                         channels = loadedChannels
+                                        selectedCategory = AllCategoryName
                                     }
                                 }
                                 .onFailure { error ->
@@ -63,11 +65,14 @@ fun PayDaIptvApp() {
             } else {
                 ChannelListScreen(
                     channels = channels,
+                    selectedCategoryName = selectedCategory,
                     playlistUrl = playlistUrl,
+                    onCategorySelected = { selectedCategory = it },
                     onChannelSelected = { selectedChannel = it },
                     onChangePlaylist = {
                         channels = emptyList()
                         selectedChannel = null
+                        selectedCategory = AllCategoryName
                         errorMessage = null
                     },
                 )
