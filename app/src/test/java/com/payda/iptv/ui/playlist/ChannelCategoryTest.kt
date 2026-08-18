@@ -8,7 +8,7 @@ import org.junit.Test
 class ChannelCategoryTest {
     @Test
     fun buildsAllCategoryAndCountsTrimmedGroups() {
-        val favoriteId = "http://example.com/la-1.m3u8"
+        val favoriteId = "la 1|http://example.com/la-1.m3u8"
         val categories = buildChannelCategories(
             channels = listOf(
                 channel("La 1", " España "),
@@ -88,9 +88,48 @@ class ChannelCategoryTest {
         assertEquals(listOf("Real Madrid TV"), filteredChannels.map { it.name })
     }
 
+    @Test
+    fun favoriteFilteringKeepsSharedTvgIdVariantsIndependent() {
+        val hd = Channel(
+            name = "Canal HD",
+            streamUrl = "http://example.com/canal-hd.m3u8",
+            tvgId = "canal",
+        )
+        val fhd = Channel(
+            name = "Canal FHD",
+            streamUrl = "http://example.com/canal-fhd.m3u8",
+            tvgId = "canal",
+        )
+        val fourK = Channel(
+            name = "Canal 4K",
+            streamUrl = "http://example.com/canal-4k.m3u8",
+            tvgId = "canal",
+        )
+        val channels = listOf(hd, fhd, fourK)
+
+        var favoriteIds = setOf(hd.stableFavoriteId())
+        assertEquals(listOf("Canal HD"), favoriteNames(channels, favoriteIds))
+
+        favoriteIds = favoriteIds + fhd.stableFavoriteId()
+        assertEquals(listOf("Canal HD", "Canal FHD"), favoriteNames(channels, favoriteIds))
+
+        favoriteIds = favoriteIds - hd.stableFavoriteId()
+        assertEquals(listOf("Canal FHD"), favoriteNames(channels, favoriteIds))
+    }
+
     private fun channel(name: String, group: String?): Channel = Channel(
         name = name,
         streamUrl = "http://example.com/${name.lowercase().replace(" ", "-")}.m3u8",
         group = group,
     )
+
+    private fun favoriteNames(
+        channels: List<Channel>,
+        favoriteIds: Set<String>,
+    ): List<String> = filterChannels(
+        channels = channels,
+        selectedCategoryName = FavoriteCategoryName,
+        searchQuery = "",
+        favoriteChannelIds = favoriteIds,
+    ).map { it.name }
 }

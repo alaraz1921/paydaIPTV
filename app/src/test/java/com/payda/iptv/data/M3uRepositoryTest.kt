@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.security.cert.CertificateExpiredException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import kotlinx.coroutines.runBlocking
@@ -104,7 +105,7 @@ class M3uRepositoryTest {
         }
 
         val result = runCatching {
-            repository(timeoutMillis = 100).loadChannels("$baseUrl/slow.m3u")
+            repository(readTimeoutMillis = 100).loadChannels("$baseUrl/slow.m3u")
         }
 
         assertTrue(result.isFailure)
@@ -134,9 +135,37 @@ class M3uRepositoryTest {
         )
     }
 
-    private fun repository(timeoutMillis: Int = 1_000): M3uRepository = M3uRepository(
+    @Test
+    fun classifiesTlsFailures() {
+        assertEquals(
+            "CERTIFICATE_EXPIRED",
+            classifyTlsFailure(SSLHandshakeException("Handshake failed").apply {
+                initCause(CertificateExpiredException("expired"))
+            }),
+        )
+        assertEquals(
+            "HOSTNAME_NOT_VERIFIED",
+            classifyTlsFailure(SSLPeerUnverifiedException("Hostname mismatch")),
+        )
+        assertEquals(
+            "TLS_VERSION_INCOMPATIBLE",
+            classifyTlsFailure(SSLHandshakeException("protocol_version")),
+        )
+        assertEquals(
+            "CONNECTION_CLOSED_DURING_HANDSHAKE",
+            classifyTlsFailure(SSLHandshakeException("Connection closed by peer")),
+        )
+    }
+
+    private fun repository(
+        connectTimeoutMillis: Int = 1_000,
+        readTimeoutMillis: Int = 1_000,
+        callTimeoutMillis: Long = 2_000,
+    ): M3uRepository = M3uRepository(
         networkLogger = NoOpNetworkLogger,
-        timeoutMillis = timeoutMillis,
+        connectTimeoutMillis = connectTimeoutMillis,
+        readTimeoutMillis = readTimeoutMillis,
+        callTimeoutMillis = callTimeoutMillis,
     )
 
     private fun HttpExchange.respond(body: String, responseCode: Int = 200) {
@@ -149,6 +178,6 @@ class M3uRepositoryTest {
         override fun logRequest(url: String, protocol: String) = Unit
         override fun logResponse(url: String, responseCode: Int) = Unit
         override fun logRedirect(fromUrl: String, toUrl: String, responseCode: Int) = Unit
-        override fun logError(url: String, error: Throwable) = Unit
+        override fun logError(diagnostics: NetworkErrorDiagnostics) = Unit
     }
 }

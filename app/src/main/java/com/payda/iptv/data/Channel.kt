@@ -10,7 +10,8 @@ data class Channel(
 )
 
 fun Channel.stableFavoriteId(): String {
-    return tvgId?.trim()?.takeIf { it.isNotEmpty() }
-        ?: streamUrl.trim().takeIf { it.isNotEmpty() }
-        ?: "${name.trim()}|${streamUrl.trim()}"
+    val normalizedStreamUrl = streamUrl.trim()
+    val prefix = tvgId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: name.trim().lowercase()
+    return "$prefix|$normalizedStreamUrl"
 }

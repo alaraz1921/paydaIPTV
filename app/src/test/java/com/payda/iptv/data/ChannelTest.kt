@@ -5,23 +5,51 @@ import org.junit.Test
 
 class ChannelTest {
     @Test
-    fun stableFavoriteIdPrefersTvgId() {
+    fun stableFavoriteIdCombinesTvgIdAndStreamUrl() {
         val channel = Channel(
             name = "Demo",
             streamUrl = "http://example.com/demo.m3u8",
             tvgId = " demo.id ",
         )
 
-        assertEquals("demo.id", channel.stableFavoriteId())
+        assertEquals("demo.id|http://example.com/demo.m3u8", channel.stableFavoriteId())
     }
 
     @Test
-    fun stableFavoriteIdFallsBackToStreamUrl() {
+    fun stableFavoriteIdFallsBackToNormalizedNameAndStreamUrl() {
         val channel = Channel(
-            name = "Demo",
+            name = " Demo Channel ",
             streamUrl = " http://example.com/demo.m3u8 ",
         )
 
-        assertEquals("http://example.com/demo.m3u8", channel.stableFavoriteId())
+        assertEquals("demo channel|http://example.com/demo.m3u8", channel.stableFavoriteId())
+    }
+
+    @Test
+    fun stableFavoriteIdDistinguishesVariantsWithSameTvgId() {
+        val hd = Channel(
+            name = "Canal HD",
+            streamUrl = "http://example.com/canal-hd.m3u8",
+            tvgId = "canal",
+        )
+        val fhd = Channel(
+            name = "Canal FHD",
+            streamUrl = "http://example.com/canal-fhd.m3u8",
+            tvgId = "canal",
+        )
+        val fourK = Channel(
+            name = "Canal 4K",
+            streamUrl = "http://example.com/canal-4k.m3u8",
+            tvgId = "canal",
+        )
+
+        assertEquals(
+            setOf(
+                "canal|http://example.com/canal-hd.m3u8",
+                "canal|http://example.com/canal-fhd.m3u8",
+                "canal|http://example.com/canal-4k.m3u8",
+            ),
+            setOf(hd.stableFavoriteId(), fhd.stableFavoriteId(), fourK.stableFavoriteId()),
+        )
     }
 }

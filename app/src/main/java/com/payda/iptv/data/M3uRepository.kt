@@ -1,22 +1,30 @@
 package com.payda.iptv.data
 
+import android.os.Build
 import android.util.Log
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.net.URL
+import java.security.cert.CertPathValidatorException
+import java.security.cert.CertificateExpiredException
+import java.security.cert.CertificateException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLProtocolException
 import javax.net.ssl.SSLException
+import javax.net.ssl.SSLContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.min
 
 class M3uRepository(
     private val parser: M3uParser = M3uParser(),
     private val networkLogger: M3uNetworkLogger = AndroidM3uNetworkLogger,
-    private val timeoutMillis: Int = TimeoutMillis,
+    private val connectTimeoutMillis: Int = ConnectTimeoutMillis,
+    private val readTimeoutMillis: Int = ReadTimeoutMillis,
+    private val callTimeoutMillis: Long = CallTimeoutMillis,
 ) {
     suspend fun loadChannels(playlistUrl: String): List<Channel> = withContext(Dispatchers.IO) {
         val content = downloadPlaylist(playlistUrl)
@@ -26,14 +34,19 @@ class M3uRepository(
     private fun downloadPlaylist(playlistUrl: String): String {
         val visitedUrls = mutableSetOf<String>()
         var currentUrl = URL(playlistUrl)
+        val callDeadlineNanos = System.nanoTime() + callTimeoutMillis * NanosPerMillisecond
 
         repeat(MaxRedirects + 1) { redirectCount ->
+            var stage = NetworkOperationStage.CONNECTING
+            checkCallTimeout(currentUrl, callDeadlineNanos)
             val connection = currentUrl.openConnection()
-            connection.connectTimeout = timeoutMillis
-            connection.readTimeout = timeoutMillis
+            connection.connectTimeout = timeoutForDeadline(connectTimeoutMillis, callDeadlineNanos)
+            connection.readTimeout = timeoutForDeadline(readTimeoutMillis, callDeadlineNanos)
             connection.setRequestProperty("User-Agent", UserAgent)
 
             if (connection !is HttpURLConnection) {
+                stage = NetworkOperationStage.READING
+                connection.readTimeout = timeoutForDeadline(readTimeoutMillis, callDeadlineNanos)
                 return connection.getInputStream().bufferedReader().use { it.readText() }
             }
 
@@ -44,6 +57,7 @@ class M3uRepository(
             try {
                 val responseCode = connection.responseCode
                 networkLogger.logResponse(safeUrl, responseCode)
+                checkCallTimeout(currentUrl, callDeadlineNanos)
 
                 if (responseCode in RedirectCodes) {
                     val location = connection.getHeaderField("Location")
@@ -68,13 +82,31 @@ class M3uRepository(
                     throw PlaylistLoadException("El servidor respondio con codigo HTTP $responseCode.")
                 }
 
+                stage = NetworkOperationStage.READING
+                connection.readTimeout = timeoutForDeadline(readTimeoutMillis, callDeadlineNanos)
                 return connection.inputStream.bufferedReader().use { it.readText() }
             } catch (error: PlaylistLoadException) {
-                networkLogger.logError(safeUrl, error)
+                networkLogger.logError(
+                    buildNetworkErrorDiagnostics(
+                        url = currentUrl,
+                        error = error,
+                        stage = if (error is PlaylistCallTimeoutException) {
+                            NetworkOperationStage.CALL_TIMEOUT
+                        } else {
+                            stage
+                        },
+                    ),
+                )
                 throw error
             } catch (error: Exception) {
                 val mappedError = PlaylistLoadException(friendlyMessageForNetworkError(error), error)
-                networkLogger.logError(safeUrl, error)
+                networkLogger.logError(
+                    buildNetworkErrorDiagnostics(
+                        url = currentUrl,
+                        error = error,
+                        stage = stage,
+                    ),
+                )
                 throw mappedError
             } finally {
                 connection.disconnect()
@@ -82,6 +114,27 @@ class M3uRepository(
         }
 
         throw PlaylistLoadException("La lista tiene demasiadas redirecciones.")
+    }
+
+    private fun timeoutForDeadline(
+        configuredTimeoutMillis: Int,
+        deadlineNanos: Long,
+    ): Int {
+        val remainingMillis = remainingCallMillis(deadlineNanos)
+        if (remainingMillis <= 0) {
+            return 1
+        }
+        return min(configuredTimeoutMillis.toLong(), remainingMillis).coerceAtLeast(1).toInt()
+    }
+
+    private fun checkCallTimeout(url: URL, deadlineNanos: Long) {
+        if (remainingCallMillis(deadlineNanos) <= 0) {
+            throw PlaylistCallTimeoutException(sanitizeUrl(url))
+        }
+    }
+
+    private fun remainingCallMillis(deadlineNanos: Long): Long {
+        return (deadlineNanos - System.nanoTime()) / NanosPerMillisecond
     }
 
     private fun sanitizeUrl(url: URL?): String {
@@ -111,8 +164,37 @@ class M3uRepository(
         return base.toString()
     }
 
+    private fun buildNetworkErrorDiagnostics(
+        url: URL,
+        error: Throwable,
+        stage: NetworkOperationStage,
+    ): NetworkErrorDiagnostics {
+        return NetworkErrorDiagnostics(
+            sanitizedUrl = sanitizeUrl(url),
+            protocol = url.protocol.uppercase(),
+            host = url.host,
+            port = if (url.port != -1) url.port else url.defaultPort,
+            stage = stage.name,
+            timeoutKind = classifyTimeout(error, stage),
+            androidVersion = "${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}",
+            sslProvider = runCatching {
+                SSLContext.getDefault().provider.name
+            }.getOrDefault("No disponible"),
+            exceptionClass = error::class.java.name,
+            exceptionType = error::class.java.simpleName,
+            message = error.message.orEmpty(),
+            rootCauseClass = rootCauseOf(error)::class.java.name,
+            rootCauseMessage = rootCauseOf(error).message.orEmpty(),
+            causeChain = error.causeChainDescription(),
+            tlsFailureKind = classifyTlsFailure(error),
+        )
+    }
+
     private companion object {
-        const val TimeoutMillis = 15_000
+        const val ConnectTimeoutMillis = 20_000
+        const val ReadTimeoutMillis = 60_000
+        const val CallTimeoutMillis = 90_000L
+        const val NanosPerMillisecond = 1_000_000L
         const val MaxRedirects = 5
         const val UserAgent = "PayDaIPTV/0.1 (Android)"
         val RedirectCodes = setOf(
@@ -149,17 +231,99 @@ internal fun friendlyMessageForNetworkError(error: Exception): String = when (er
     else -> "No se ha podido cargar la lista M3U."
 }
 
-class PlaylistLoadException(
+internal fun classifyTimeout(
+    error: Throwable,
+    stage: NetworkOperationStage,
+): String? = when {
+    error is PlaylistCallTimeoutException -> "CALL_TIMEOUT"
+    stage == NetworkOperationStage.CALL_TIMEOUT -> "CALL_TIMEOUT"
+    error !is SocketTimeoutException -> null
+    stage == NetworkOperationStage.CONNECTING -> "CONNECT_TIMEOUT"
+    stage == NetworkOperationStage.READING -> "READ_TIMEOUT"
+    else -> "SOCKET_TIMEOUT"
+}
+
+internal fun classifyTlsFailure(error: Throwable): String? {
+    if (error !is SSLException && error.causeChain().none { it is SSLException }) {
+        return null
+    }
+
+    val causes = error.causeChain()
+    val messages = causes.joinToString(" ") { it.message.orEmpty() }.lowercase()
+
+    return when {
+        causes.any { it is CertificateExpiredException } -> "CERTIFICATE_EXPIRED"
+        causes.any { it is SSLPeerUnverifiedException } -> "HOSTNAME_NOT_VERIFIED"
+        causes.any { it is CertPathValidatorException } -> "CERTIFICATE_NOT_TRUSTED"
+        causes.any { it is CertificateException } -> "CERTIFICATE_ERROR"
+        "protocol_version" in messages || "tlsv1" in messages -> "TLS_VERSION_INCOMPATIBLE"
+        "handshake_failure" in messages -> "HANDSHAKE_FAILURE"
+        "connection closed" in messages || "closed" in messages -> "CONNECTION_CLOSED_DURING_HANDSHAKE"
+        causes.any { it is SocketTimeoutException } -> "TLS_TIMEOUT"
+        error is SSLHandshakeException -> "SSL_HANDSHAKE_FAILED"
+        else -> "SSL_ERROR"
+    }
+}
+
+private fun Throwable.rootCauseOfSelf(): Throwable = cause?.rootCauseOfSelf() ?: this
+
+private fun rootCauseOf(error: Throwable): Throwable = error.rootCauseOfSelf()
+
+private fun Throwable.causeChain(): List<Throwable> {
+    val causes = mutableListOf<Throwable>()
+    var current: Throwable? = this
+    while (current != null && current !in causes) {
+        causes += current
+        current = current.cause
+    }
+    return causes
+}
+
+private fun Throwable.causeChainDescription(): String {
+    return causeChain().joinToString(" -> ") { cause ->
+        "${cause::class.java.simpleName}: ${cause.message.orEmpty()}"
+    }
+}
+
+open class PlaylistLoadException(
     message: String,
     cause: Throwable? = null,
 ) : IOException(message, cause)
+
+private class PlaylistCallTimeoutException(
+    sanitizedUrl: String,
+) : PlaylistLoadException("La descarga de la lista ha agotado el tiempo total de espera: $sanitizedUrl")
 
 interface M3uNetworkLogger {
     fun logRequest(url: String, protocol: String)
     fun logResponse(url: String, responseCode: Int)
     fun logRedirect(fromUrl: String, toUrl: String, responseCode: Int)
-    fun logError(url: String, error: Throwable)
+    fun logError(diagnostics: NetworkErrorDiagnostics)
 }
+
+internal enum class NetworkOperationStage {
+    CONNECTING,
+    READING,
+    CALL_TIMEOUT,
+}
+
+data class NetworkErrorDiagnostics(
+    val sanitizedUrl: String,
+    val protocol: String,
+    val host: String,
+    val port: Int,
+    val stage: String,
+    val timeoutKind: String?,
+    val androidVersion: String,
+    val sslProvider: String,
+    val exceptionClass: String,
+    val exceptionType: String,
+    val message: String,
+    val rootCauseClass: String,
+    val rootCauseMessage: String,
+    val causeChain: String,
+    val tlsFailureKind: String?,
+)
 
 private object AndroidM3uNetworkLogger : M3uNetworkLogger {
     override fun logRequest(url: String, protocol: String) {
@@ -174,11 +338,26 @@ private object AndroidM3uNetworkLogger : M3uNetworkLogger {
         Log.d(Tag, "Redirect playlist code=$responseCode from=$fromUrl to=$toUrl")
     }
 
-    override fun logError(url: String, error: Throwable) {
+    override fun logError(diagnostics: NetworkErrorDiagnostics) {
         Log.e(
             Tag,
-            "Playlist download failed url=$url type=${error::class.java.name} message=${error.message}",
-            error,
+            """
+            Playlist download failed
+            Url: ${diagnostics.sanitizedUrl}
+            Protocol: ${diagnostics.protocol}
+            Host: ${diagnostics.host}
+            Port: ${diagnostics.port}
+            Stage: ${diagnostics.stage}
+            Timeout kind: ${diagnostics.timeoutKind ?: "N/A"}
+            Android: ${diagnostics.androidVersion}
+            SSL provider: ${diagnostics.sslProvider}
+            Exception: ${diagnostics.exceptionType}
+            Exception class: ${diagnostics.exceptionClass}
+            TLS failure kind: ${diagnostics.tlsFailureKind ?: "N/A"}
+            Root cause: ${diagnostics.rootCauseClass}: ${diagnostics.rootCauseMessage}
+            Cause chain: ${diagnostics.causeChain}
+            Message: ${diagnostics.message}
+            """.trimIndent(),
         )
     }
 
