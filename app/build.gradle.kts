@@ -1,6 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun buildConfigString(value: String): String {
+    val escapedValue = value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return "\"$escapedValue\""
 }
 
 android {
@@ -17,9 +33,23 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "TEST_PLAYLIST_URL_1", buildConfigString(""))
+        buildConfigField("String", "TEST_PLAYLIST_URL_2", buildConfigString(""))
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "String",
+                "TEST_PLAYLIST_URL_1",
+                buildConfigString(localProperties.getProperty("TEST_PLAYLIST_URL_1").orEmpty())
+            )
+            buildConfigField(
+                "String",
+                "TEST_PLAYLIST_URL_2",
+                buildConfigString(localProperties.getProperty("TEST_PLAYLIST_URL_2").orEmpty())
+            )
+        }
         release {
             optimization {
                 enable = false
@@ -31,6 +61,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }

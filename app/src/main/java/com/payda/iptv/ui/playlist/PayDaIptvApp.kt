@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.payda.iptv.BuildConfig
 import com.payda.iptv.data.Channel
 import com.payda.iptv.data.M3uRepository
 import com.payda.iptv.data.stableFavoriteId
@@ -38,6 +39,16 @@ fun PayDaIptvApp() {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var loadingMessage by remember { mutableStateOf<String?>(null) }
+    val testPlaylistOptions = remember {
+        if (BuildConfig.DEBUG) {
+            listOf(
+                TestPlaylistOption("Prueba 1", BuildConfig.TEST_PLAYLIST_URL_1),
+                TestPlaylistOption("Prueba 2", BuildConfig.TEST_PLAYLIST_URL_2),
+            ).filter { it.url.isNotBlank() }
+        } else {
+            emptyList()
+        }
+    }
 
     fun loadPlaylist(requestedUrl: String, message: String? = null) {
         coroutineScope.launch {
@@ -85,6 +96,7 @@ fun PayDaIptvApp() {
                     isLoading = isLoading,
                     loadingMessage = loadingMessage,
                     errorMessage = errorMessage,
+                    testPlaylistOptions = testPlaylistOptions,
                     onLoadPlaylist = {
                         val requestedUrl = playlistUrl.trim()
                         if (requestedUrl.isBlank()) {

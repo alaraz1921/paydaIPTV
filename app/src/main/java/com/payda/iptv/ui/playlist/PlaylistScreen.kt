@@ -35,6 +35,7 @@ fun PlaylistScreen(
     isLoading: Boolean,
     loadingMessage: String?,
     errorMessage: String?,
+    testPlaylistOptions: List<TestPlaylistOption>,
     onLoadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -93,6 +94,23 @@ fun PlaylistScreen(
                 Text("Pegar")
             }
         }
+        if (testPlaylistOptions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                testPlaylistOptions.forEach { option ->
+                    OutlinedButton(
+                        onClick = {
+                            onPlaylistUrlChange(option.url)
+                            clipboardMessage = "${option.label} preparada. Pulsa Cargar lista."
+                            focusRequester.requestFocus()
+                        },
+                        enabled = !isLoading,
+                    ) {
+                        Text(option.label)
+                    }
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(12.dp))
         Button(
             onClick = onLoadPlaylist,
@@ -131,3 +149,8 @@ fun PlaylistScreen(
         }
     }
 }
+
+data class TestPlaylistOption(
+    val label: String,
+    val url: String,
+)
