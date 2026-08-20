@@ -229,7 +229,7 @@ private fun ChannelLogo(
     modifier: Modifier = Modifier,
 ) {
     val logo = produceState<ImageBitmap?>(initialValue = null, key1 = logoUrl) {
-        value = logoUrl?.let { loadImage(it) }
+        value = logoUrl?.let { loadChannelLogo(it) }
     }
 
     Box(
@@ -254,7 +254,7 @@ private fun ChannelLogo(
     }
 }
 
-private suspend fun loadImage(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
+internal suspend fun loadChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
     runCatching {
         URL(url).openStream().use { input ->
             BitmapFactory.decodeStream(input)?.asImageBitmap()

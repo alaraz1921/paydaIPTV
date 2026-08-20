@@ -13,6 +13,9 @@ import com.payda.iptv.data.Channel
 import com.payda.iptv.data.M3uRepository
 import com.payda.iptv.data.stableFavoriteId
 import com.payda.iptv.settings.SettingsRepository
+import com.payda.iptv.ui.tv.DeviceType
+import com.payda.iptv.ui.tv.TvChannelListScreen
+import com.payda.iptv.ui.tv.rememberDeviceType
 import kotlinx.coroutines.launch
 
 private const val SamplePlaylistUrl =
@@ -21,6 +24,7 @@ private const val SamplePlaylistUrl =
 @Composable
 fun PayDaIptvApp() {
     val context = LocalContext.current
+    val deviceType = rememberDeviceType()
     val repository = remember { M3uRepository() }
     val settingsRepository = remember { SettingsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
@@ -28,6 +32,7 @@ fun PayDaIptvApp() {
     var playlistUrl by remember { mutableStateOf("") }
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+    var lastSelectedChannelId by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf(AllCategoryName) }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -91,28 +96,57 @@ fun PayDaIptvApp() {
                     },
                 )
             } else {
-                ChannelListScreen(
-                    channels = channels,
-                    selectedCategoryName = selectedCategory,
-                    searchQuery = searchQuery,
-                    favoriteChannelIds = favoriteChannelIds,
-                    playlistUrl = playlistUrl,
-                    onCategorySelected = { selectedCategory = it },
-                    onSearchQueryChange = { searchQuery = it },
-                    onClearSearch = { searchQuery = "" },
-                    onToggleFavorite = { channelToToggle ->
-                        coroutineScope.launch {
-                            settingsRepository.toggleFavorite(channelToToggle.stableFavoriteId())
-                        }
-                    },
-                    onChannelSelected = { selectedChannel = it },
-                    onChangePlaylist = {
-                        channels = emptyList()
-                        selectedChannel = null
-                        selectedCategory = AllCategoryName
-                        errorMessage = null
-                    },
-                )
+                val sharedOnToggleFavorite: (Channel) -> Unit = { channelToToggle ->
+                    coroutineScope.launch {
+                        settingsRepository.toggleFavorite(channelToToggle.stableFavoriteId())
+                    }
+                }
+                val sharedOnChannelSelected: (Channel) -> Unit = { channelToPlay ->
+                    lastSelectedChannelId = channelToPlay.stableFavoriteId()
+                    selectedChannel = channelToPlay
+                }
+
+                if (deviceType == DeviceType.TV) {
+                    TvChannelListScreen(
+                        channels = channels,
+                        selectedCategoryName = selectedCategory,
+                        searchQuery = searchQuery,
+                        favoriteChannelIds = favoriteChannelIds,
+                        lastSelectedChannelId = lastSelectedChannelId,
+                        onCategorySelected = { selectedCategory = it },
+                        onSearchQueryChange = { searchQuery = it },
+                        onClearSearch = { searchQuery = "" },
+                        onToggleFavorite = sharedOnToggleFavorite,
+                        onChannelSelected = sharedOnChannelSelected,
+                        onChangePlaylist = {
+                            channels = emptyList()
+                            selectedChannel = null
+                            lastSelectedChannelId = null
+                            selectedCategory = AllCategoryName
+                            errorMessage = null
+                        },
+                    )
+                } else {
+                    ChannelListScreen(
+                        channels = channels,
+                        selectedCategoryName = selectedCategory,
+                        searchQuery = searchQuery,
+                        favoriteChannelIds = favoriteChannelIds,
+                        playlistUrl = playlistUrl,
+                        onCategorySelected = { selectedCategory = it },
+                        onSearchQueryChange = { searchQuery = it },
+                        onClearSearch = { searchQuery = "" },
+                        onToggleFavorite = sharedOnToggleFavorite,
+                        onChannelSelected = sharedOnChannelSelected,
+                        onChangePlaylist = {
+                            channels = emptyList()
+                            selectedChannel = null
+                            lastSelectedChannelId = null
+                            selectedCategory = AllCategoryName
+                            errorMessage = null
+                        },
+                    )
+                }
             }
         }
         else -> PlayerScreen(
