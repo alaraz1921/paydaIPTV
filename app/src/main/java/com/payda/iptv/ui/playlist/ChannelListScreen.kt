@@ -40,6 +40,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.payda.iptv.data.Channel
 import com.payda.iptv.data.stableFavoriteId
+import com.payda.iptv.epg.EpgData
+import com.payda.iptv.epg.timeRangeText
+import java.time.Instant
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,6 +53,9 @@ fun ChannelListScreen(
     selectedCategoryName: String,
     searchQuery: String,
     favoriteChannelIds: Set<String>,
+    epgData: EpgData?,
+    epgNow: Instant,
+    epgMessage: String?,
     playlistUrl: String,
     onCategorySelected: (String) -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -99,6 +105,14 @@ fun ChannelListScreen(
         Button(onClick = onChangePlaylist) {
             Text("Cambiar lista")
         }
+        if (!epgMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = epgMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
             value = searchQuery,
@@ -140,6 +154,8 @@ fun ChannelListScreen(
                 ChannelRow(
                     channel = channel,
                     isFavorite = channel.stableFavoriteId() in favoriteChannelIds,
+                    epgData = epgData,
+                    epgNow = epgNow,
                     onToggleFavorite = { onToggleFavorite(channel) },
                     onClick = { onChannelSelected(channel) },
                 )
@@ -152,6 +168,8 @@ fun ChannelListScreen(
 private fun ChannelRow(
     channel: Channel,
     isFavorite: Boolean,
+    epgData: EpgData?,
+    epgNow: Instant,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -186,6 +204,33 @@ private fun ChannelRow(
                     Text(
                         text = channel.group,
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val epgInfo = epgData?.programmeFor(channel, epgNow)
+                val currentProgramme = epgInfo?.current
+                if (currentProgramme != null) {
+                    Text(
+                        text = currentProgramme.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = currentProgramme.timeRangeText(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                val nextProgramme = epgInfo?.next
+                if (nextProgramme != null) {
+                    Text(
+                        text = "Despues: ${nextProgramme.title}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

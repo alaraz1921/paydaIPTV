@@ -1,15 +1,21 @@
 package com.payda.iptv.data
 
 class M3uParser {
-    fun parse(content: String): List<Channel> {
+    fun parse(content: String): List<Channel> = parsePlaylist(content).channels
+
+    fun parsePlaylist(content: String): M3uPlaylist {
         val channels = mutableListOf<Channel>()
         var pendingChannel: PendingChannel? = null
+        var metadata = M3uPlaylistMetadata()
 
         content.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .forEach { line ->
                 when {
+                    line.startsWith("#EXTM3U", ignoreCase = true) -> {
+                        metadata = parseHeaderMetadata(line)
+                    }
                     line.startsWith("#EXTINF", ignoreCase = true) -> {
                         pendingChannel = parseExtInf(line)
                     }
@@ -21,7 +27,22 @@ class M3uParser {
                 }
             }
 
-        return channels
+        return M3uPlaylist(
+            channels = channels,
+            metadata = metadata,
+        )
+    }
+
+    private fun parseHeaderMetadata(line: String): M3uPlaylistMetadata {
+        val attributes = parseAttributes(line)
+        return M3uPlaylistMetadata(
+            epgUrlDetected = attributes["x-tvg-url"]
+                ?.takeIf { it.isNotBlank() }
+                ?: attributes["url-tvg"]?.takeIf { it.isNotBlank() },
+            playlistName = attributes["playlist-name"]?.takeIf { it.isNotBlank() }
+                ?: attributes["x-tvg-name"]?.takeIf { it.isNotBlank() }
+                ?: attributes["tvg-name"]?.takeIf { it.isNotBlank() },
+        )
     }
 
     private fun parseExtInf(line: String): PendingChannel {
@@ -86,3 +107,13 @@ class M3uParser {
         val AttributeRegex = Regex("([A-Za-z0-9_-]+)=\"([^\"]*)\"")
     }
 }
+
+data class M3uPlaylist(
+    val channels: List<Channel>,
+    val metadata: M3uPlaylistMetadata = M3uPlaylistMetadata(),
+)
+
+data class M3uPlaylistMetadata(
+    val epgUrlDetected: String? = null,
+    val playlistName: String? = null,
+)

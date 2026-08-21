@@ -48,12 +48,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.payda.iptv.data.Channel
 import com.payda.iptv.data.stableFavoriteId
+import com.payda.iptv.epg.EpgData
+import com.payda.iptv.epg.timeRangeText
 import com.payda.iptv.ui.playlist.AllCategoryName
 import com.payda.iptv.ui.playlist.ChannelCategory
 import com.payda.iptv.ui.playlist.FavoriteCategoryName
 import com.payda.iptv.ui.playlist.buildChannelCategories
 import com.payda.iptv.ui.playlist.filterChannels
 import com.payda.iptv.ui.playlist.loadChannelLogo
+import java.time.Instant
 
 @Composable
 fun TvChannelListScreen(
@@ -61,6 +64,9 @@ fun TvChannelListScreen(
     selectedCategoryName: String,
     searchQuery: String,
     favoriteChannelIds: Set<String>,
+    epgData: EpgData?,
+    epgNow: Instant,
+    epgMessage: String?,
     lastSelectedChannelId: String?,
     onCategorySelected: (String) -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -107,6 +113,14 @@ fun TvChannelListScreen(
         Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = onChangePlaylist) {
             Text("Cambiar lista")
+        }
+        if (!epgMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = epgMessage,
+                color = Color(0xFFFCA5A5),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
         Spacer(modifier = Modifier.height(20.dp))
         Text(
@@ -167,6 +181,8 @@ fun TvChannelListScreen(
                 TvChannelRow(
                     channel = channel,
                     isFavorite = channel.stableFavoriteId() in favoriteChannelIds,
+                    epgData = epgData,
+                    epgNow = epgNow,
                     modifier = if (shouldRequestFocus) {
                         Modifier.focusRequester(firstChannelFocusRequester)
                     } else {
@@ -213,6 +229,8 @@ private fun TvCategoryChip(
 private fun TvChannelRow(
     channel: Channel,
     isFavorite: Boolean,
+    epgData: EpgData?,
+    epgNow: Instant,
     modifier: Modifier = Modifier,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
@@ -239,14 +257,36 @@ private fun TvChannelRow(
                 channelName = channel.name,
                 modifier = Modifier.size(52.dp),
             )
-            Text(
-                text = channel.name,
-                modifier = Modifier.weight(1f),
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channel.name,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val epgInfo = epgData?.programmeFor(channel, epgNow)
+                val currentProgramme = epgInfo?.current
+                if (currentProgramme != null) {
+                    Text(
+                        text = "${currentProgramme.title} · ${currentProgramme.timeRangeText()}",
+                        color = Color(0xFFCBD5E1),
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val nextProgramme = epgInfo?.next
+                if (nextProgramme != null) {
+                    Text(
+                        text = "Despues: ${nextProgramme.title}",
+                        color = Color(0xFFCBD5E1),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             TextButton(onClick = onToggleFavorite) {
                 Text(if (isFavorite) "★" else "☆")
             }

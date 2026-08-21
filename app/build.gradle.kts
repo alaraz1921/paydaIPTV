@@ -35,6 +35,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TEST_PLAYLIST_URL_1", buildConfigString(""))
         buildConfigField("String", "TEST_PLAYLIST_URL_2", buildConfigString(""))
+        buildConfigField("String", "TEST_EPG_URL", buildConfigString(""))
     }
 
     buildTypes {
@@ -48,6 +49,11 @@ android {
                 "String",
                 "TEST_PLAYLIST_URL_2",
                 buildConfigString(localProperties.getProperty("TEST_PLAYLIST_URL_2").orEmpty())
+            )
+            buildConfigField(
+                "String",
+                "TEST_EPG_URL",
+                buildConfigString(localProperties.getProperty("TEST_EPG_URL").orEmpty())
             )
         }
         release {

@@ -24,9 +24,25 @@ class SettingsRepository(
         return dataStore.data.first()[LastPlaylistUrlKey]?.takeIf { it.isNotBlank() }
     }
 
+    suspend fun getLastEpgUrl(): String? {
+        return dataStore.data.first()[LastEpgUrlKey]?.takeIf { it.isNotBlank() }
+    }
+
     suspend fun saveLastPlaylistUrl(url: String) {
         dataStore.edit { preferences ->
             preferences[LastPlaylistUrlKey] = url
+        }
+    }
+
+    suspend fun saveLastEpgUrl(url: String) {
+        dataStore.edit { preferences ->
+            preferences[LastEpgUrlKey] = url
+        }
+    }
+
+    suspend fun clearLastEpgUrl() {
+        dataStore.edit { preferences ->
+            preferences.remove(LastEpgUrlKey)
         }
     }
 
@@ -43,6 +59,7 @@ class SettingsRepository(
 
     private companion object {
         val LastPlaylistUrlKey = stringPreferencesKey("last_playlist_url")
+        val LastEpgUrlKey = stringPreferencesKey("last_epg_url")
         val FavoriteChannelIdsKey = stringSetPreferencesKey("favorite_channel_ids")
     }
 }

@@ -36,11 +36,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.payda.iptv.data.Channel
+import com.payda.iptv.epg.ChannelEpgInfo
+import com.payda.iptv.epg.timeRangeText
 
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
     channel: Channel,
+    epgInfo: ChannelEpgInfo?,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
@@ -147,6 +150,28 @@ fun PlayerScreen(
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
             )
+            val currentProgramme = epgInfo?.current
+            if (currentProgramme != null) {
+                Text(
+                    text = currentProgramme.title,
+                    modifier = Modifier.padding(top = 4.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = currentProgramme.timeRangeText(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            val nextProgramme = epgInfo?.next
+            if (nextProgramme != null) {
+                Text(
+                    text = "Despues: ${nextProgramme.title}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
         if (playbackMessage.isNotBlank()) {

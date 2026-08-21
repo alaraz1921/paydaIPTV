@@ -83,4 +83,46 @@ class M3uParserTest {
 
         assertEquals(emptyList<Channel>(), channels)
     }
+
+    @Test
+    fun parsesPlaylistWithoutEpgMetadata() {
+        val playlist = parser.parsePlaylist(
+            """
+            #EXTM3U
+            #EXTINF:-1,No EPG Channel
+            https://example.com/no-epg.m3u8
+            """.trimIndent(),
+        )
+
+        assertEquals(1, playlist.channels.size)
+        assertNull(playlist.metadata.epgUrlDetected)
+        assertNull(playlist.metadata.playlistName)
+    }
+
+    @Test
+    fun detectsXTvGUrlFromHeader() {
+        val playlist = parser.parsePlaylist(
+            """
+            #EXTM3U x-tvg-url="https://epg.example.test/xmltv.xml" playlist-name="Demo Playlist"
+            #EXTINF:-1 tvg-id="demo",Demo Channel
+            https://example.com/demo.m3u8
+            """.trimIndent(),
+        )
+
+        assertEquals("https://epg.example.test/xmltv.xml", playlist.metadata.epgUrlDetected)
+        assertEquals("Demo Playlist", playlist.metadata.playlistName)
+    }
+
+    @Test
+    fun detectsUrlTvgFromHeader() {
+        val playlist = parser.parsePlaylist(
+            """
+            #EXTM3U url-tvg="https://epg.example.test/guide.xml"
+            #EXTINF:-1 tvg-id="demo",Demo Channel
+            https://example.com/demo.m3u8
+            """.trimIndent(),
+        )
+
+        assertEquals("https://epg.example.test/guide.xml", playlist.metadata.epgUrlDetected)
+    }
 }

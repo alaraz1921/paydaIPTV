@@ -31,16 +31,20 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PlaylistScreen(
     playlistUrl: String,
+    epgUrl: String,
     onPlaylistUrlChange: (String) -> Unit,
+    onEpgUrlChange: (String) -> Unit,
     isLoading: Boolean,
     loadingMessage: String?,
     errorMessage: String?,
     testPlaylistOptions: List<TestPlaylistOption>,
+    testEpgOption: TestPlaylistOption?,
     onLoadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboardManager = LocalClipboardManager.current
-    val focusRequester = remember { FocusRequester() }
+    val playlistFocusRequester = remember { FocusRequester() }
+    val epgFocusRequester = remember { FocusRequester() }
     var clipboardMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
@@ -60,7 +64,7 @@ fun PlaylistScreen(
             onValueChange = onPlaylistUrlChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester),
+                .focusRequester(playlistFocusRequester),
             label = { Text("URL de lista M3U") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -72,7 +76,7 @@ fun PlaylistScreen(
                 onClick = {
                     onPlaylistUrlChange("")
                     clipboardMessage = null
-                    focusRequester.requestFocus()
+                    playlistFocusRequester.requestFocus()
                 },
                 enabled = !isLoading && playlistUrl.isNotEmpty(),
             ) {
@@ -87,7 +91,7 @@ fun PlaylistScreen(
                         onPlaylistUrlChange(clipboardText)
                         clipboardMessage = "URL pegada. Pulsa Cargar lista para continuar."
                     }
-                    focusRequester.requestFocus()
+                    playlistFocusRequester.requestFocus()
                 },
                 enabled = !isLoading,
             ) {
@@ -102,12 +106,64 @@ fun PlaylistScreen(
                         onClick = {
                             onPlaylistUrlChange(option.url)
                             clipboardMessage = "${option.label} preparada. Pulsa Cargar lista."
-                            focusRequester.requestFocus()
+                            playlistFocusRequester.requestFocus()
                         },
                         enabled = !isLoading,
                     ) {
                         Text(option.label)
                     }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(18.dp))
+        OutlinedTextField(
+            value = epgUrl,
+            onValueChange = onEpgUrlChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(epgFocusRequester),
+            label = { Text("URL EPG / XMLTV") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            enabled = !isLoading,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    onEpgUrlChange("")
+                    clipboardMessage = null
+                    epgFocusRequester.requestFocus()
+                },
+                enabled = !isLoading && epgUrl.isNotEmpty(),
+            ) {
+                Text("Borrar EPG")
+            }
+            OutlinedButton(
+                onClick = {
+                    val clipboardText = clipboardManager.getText()?.text?.trim()
+                    if (clipboardText.isNullOrBlank()) {
+                        clipboardMessage = "El portapapeles no contiene una URL EPG valida."
+                    } else {
+                        onEpgUrlChange(clipboardText)
+                        clipboardMessage = "URL EPG pegada."
+                    }
+                    epgFocusRequester.requestFocus()
+                },
+                enabled = !isLoading,
+            ) {
+                Text("Pegar EPG")
+            }
+            if (testEpgOption != null) {
+                OutlinedButton(
+                    onClick = {
+                        onEpgUrlChange(testEpgOption.url)
+                        clipboardMessage = "${testEpgOption.label} preparada."
+                        epgFocusRequester.requestFocus()
+                    },
+                    enabled = !isLoading,
+                ) {
+                    Text(testEpgOption.label)
                 }
             }
         }

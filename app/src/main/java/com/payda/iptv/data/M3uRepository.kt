@@ -27,8 +27,12 @@ class M3uRepository(
     private val callTimeoutMillis: Long = CallTimeoutMillis,
 ) {
     suspend fun loadChannels(playlistUrl: String): List<Channel> = withContext(Dispatchers.IO) {
+        loadPlaylist(playlistUrl).channels
+    }
+
+    suspend fun loadPlaylist(playlistUrl: String): M3uPlaylist = withContext(Dispatchers.IO) {
         val content = downloadPlaylist(playlistUrl)
-        parser.parse(content)
+        parser.parsePlaylist(content)
     }
 
     private fun downloadPlaylist(playlistUrl: String): String {
