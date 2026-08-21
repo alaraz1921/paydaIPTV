@@ -15,7 +15,11 @@ import com.payda.iptv.data.Channel
 import com.payda.iptv.data.EpgUrlSource
 import com.payda.iptv.data.M3uRepository
 import com.payda.iptv.data.NetworkConnectivity
+import com.payda.iptv.data.PlaylistSourceType
+import com.payda.iptv.data.XtreamConfig
+import com.payda.iptv.data.XtreamRepository
 import com.payda.iptv.data.isUsableEpgUrl
+import com.payda.iptv.data.normalizeXtreamServer
 import com.payda.iptv.data.resolveEpgUrl
 import com.payda.iptv.data.stableFavoriteId
 import com.payda.iptv.epg.EpgData
@@ -38,13 +42,18 @@ fun PayDaIptvApp() {
     val context = LocalContext.current
     val deviceType = rememberDeviceType()
     val repository = remember { M3uRepository() }
+    val xtreamRepository = remember { XtreamRepository() }
     val epgRepository = remember { EpgRepository() }
     val networkConnectivity = remember { NetworkConnectivity(context) }
     val settingsRepository = remember { SettingsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
     val favoriteChannelIds by settingsRepository.favoriteChannelIds.collectAsState(initial = emptySet())
     var playlistUrl by remember { mutableStateOf("") }
+    var sourceType by remember { mutableStateOf(PlaylistSourceType.M3U) }
     var epgUrl by remember { mutableStateOf("") }
+    var xtreamServer by remember { mutableStateOf("") }
+    var xtreamUsername by remember { mutableStateOf("") }
+    var xtreamPassword by remember { mutableStateOf("") }
     var manualEpgUrlConfigured by remember { mutableStateOf(false) }
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
@@ -83,6 +92,46 @@ fun PayDaIptvApp() {
             TestPlaylistOption("EPG Prueba", BuildConfig.TEST_EPG_URL)
         } else {
             null
+        }
+    }
+    val testXtreamOption = remember {
+        if (
+            BuildConfig.DEBUG &&
+            BuildConfig.TEST_XTREAM_SERVER.isNotBlank() &&
+            BuildConfig.TEST_XTREAM_USER.isNotBlank() &&
+            BuildConfig.TEST_XTREAM_PASSWORD.isNotBlank()
+        ) {
+            TestXtreamOption(
+                label = "Xtream Prueba",
+                server = BuildConfig.TEST_XTREAM_SERVER,
+                username = BuildConfig.TEST_XTREAM_USER,
+                password = BuildConfig.TEST_XTREAM_PASSWORD,
+            )
+        } else {
+            null
+        }
+    }
+
+    fun clearLoadedContent() {
+        channels = emptyList()
+        epgData = null
+        selectedChannel = null
+        tvScreen = TvScreen.HOME
+        mobileScreen = MobileScreen.HOME
+        tvPreviewChannel = null
+        tvPreviewChannels = emptyList()
+        lastSelectedChannelId = null
+        selectedCategory = AllCategoryName
+        searchQuery = ""
+        errorMessage = null
+        epgMessage = null
+    }
+
+    fun changeSourceType(newSourceType: PlaylistSourceType) {
+        sourceType = newSourceType
+        clearLoadedContent()
+        coroutineScope.launch {
+            settingsRepository.savePlaylistSourceType(newSourceType)
         }
     }
 
@@ -155,6 +204,8 @@ fun PayDaIptvApp() {
                         tvPreviewChannels = emptyList()
                         selectedCategory = AllCategoryName
                         searchQuery = ""
+                        sourceType = PlaylistSourceType.M3U
+                        settingsRepository.savePlaylistSourceType(PlaylistSourceType.M3U)
                         settingsRepository.saveLastPlaylistUrl(requestedUrl)
 
                         val epgResolution = resolveEpgUrl(
@@ -189,16 +240,99 @@ fun PayDaIptvApp() {
         }
     }
 
+    fun loadXtream(config: XtreamConfig, message: String? = null) {
+        coroutineScope.launch {
+            isLoading = true
+            loadingMessage = message
+            errorMessage = null
+            epgMessage = null
+            if (!networkConnectivity.hasInternetConnection()) {
+                errorMessage = "Sin conexion a Internet"
+                loadingMessage = null
+                isLoading = false
+                return@launch
+            }
+            val normalizedConfig = runCatching {
+                config.copy(server = normalizeXtreamServer(config.server))
+            }.getOrElse { error ->
+                errorMessage = error.message ?: "Servidor Xtream invalido."
+                loadingMessage = null
+                isLoading = false
+                return@launch
+            }
+
+            runCatching { xtreamRepository.loadLiveData(normalizedConfig) }
+                .onSuccess { liveData ->
+                    if (liveData.channels.isEmpty()) {
+                        errorMessage = "La fuente Xtream no contiene canales live validos."
+                    } else {
+                        sourceType = PlaylistSourceType.XTREAM
+                        xtreamServer = normalizedConfig.server
+                        xtreamUsername = normalizedConfig.username
+                        xtreamPassword = normalizedConfig.password
+                        channels = liveData.channels
+                        epgData = null
+                        tvScreen = TvScreen.HOME
+                        mobileScreen = MobileScreen.HOME
+                        tvPreviewChannel = null
+                        tvPreviewChannels = emptyList()
+                        selectedCategory = AllCategoryName
+                        searchQuery = ""
+                        settingsRepository.savePlaylistSourceType(PlaylistSourceType.XTREAM)
+                        settingsRepository.saveXtreamConfig(normalizedConfig)
+                        epgMessage = null
+                    }
+                }
+                .onFailure { error ->
+                    errorMessage = error.message ?: "No se pudo conectar con Xtream."
+                }
+            loadingMessage = null
+            isLoading = false
+        }
+    }
+
+    fun submitConfiguredSource() {
+        if (sourceType == PlaylistSourceType.M3U) {
+            val requestedUrl = playlistUrl.trim()
+            if (requestedUrl.isBlank()) {
+                errorMessage = "Introduce una URL M3U valida."
+                return
+            }
+            loadPlaylist(requestedUrl)
+        } else {
+            val config = XtreamConfig(
+                server = xtreamServer.trim(),
+                username = xtreamUsername.trim(),
+                password = xtreamPassword,
+            )
+            if (config.server.isBlank() || config.username.isBlank() || config.password.isBlank()) {
+                errorMessage = "Introduce servidor, usuario y contrasena Xtream."
+                return
+            }
+            loadXtream(config)
+        }
+    }
+
     LaunchedEffect(Unit) {
+        val savedSourceType = settingsRepository.getPlaylistSourceType()
         val savedUrl = settingsRepository.getLastPlaylistUrl()
         val savedEpgUrl = settingsRepository.getLastEpgUrl()
+        val savedXtreamConfig = settingsRepository.getXtreamConfig()
+        sourceType = savedSourceType
+        if (savedXtreamConfig != null) {
+            xtreamServer = savedXtreamConfig.server
+            xtreamUsername = savedXtreamConfig.username
+            xtreamPassword = savedXtreamConfig.password
+        }
         if (!savedEpgUrl.isNullOrBlank() && isUsableEpgUrl(savedEpgUrl)) {
             epgUrl = savedEpgUrl
             manualEpgUrlConfigured = false
         } else if (!savedEpgUrl.isNullOrBlank()) {
             settingsRepository.clearLastEpgUrl()
         }
-        if (!savedUrl.isNullOrBlank()) {
+        if (savedSourceType == PlaylistSourceType.XTREAM && savedXtreamConfig != null) {
+            loadXtream(savedXtreamConfig, "Conectando con Xtream...")
+        } else if (!savedUrl.isNullOrBlank()) {
             playlistUrl = savedUrl
             loadPlaylist(savedUrl, "Cargando ultima lista...")
         }
@@ -208,8 +342,13 @@ fun PayDaIptvApp() {
         null -> {
             if (channels.isEmpty()) {
                 PlaylistScreen(
+                        sourceType = sourceType,
                         playlistUrl = playlistUrl,
                         epgUrl = epgUrl,
+                        xtreamServer = xtreamServer,
+                        xtreamUsername = xtreamUsername,
+                        xtreamPassword = xtreamPassword,
+                        onSourceTypeChange = ::changeSourceType,
                         onPlaylistUrlChange = {
                             playlistUrl = it
                             errorMessage = null
@@ -226,20 +365,25 @@ fun PayDaIptvApp() {
                                 }
                             }
                         },
+                        onXtreamServerChange = {
+                            xtreamServer = it
+                            errorMessage = null
+                        },
+                        onXtreamUsernameChange = {
+                            xtreamUsername = it
+                            errorMessage = null
+                        },
+                        onXtreamPasswordChange = {
+                            xtreamPassword = it
+                            errorMessage = null
+                        },
                     isLoading = isLoading,
                     loadingMessage = loadingMessage,
                     errorMessage = errorMessage,
                     testPlaylistOptions = testPlaylistOptions,
                     testEpgOption = testEpgOption,
-                    onLoadPlaylist = {
-                        val requestedUrl = playlistUrl.trim()
-                        if (requestedUrl.isBlank()) {
-                            errorMessage = "Introduce una URL M3U valida."
-                            return@PlaylistScreen
-                        }
-
-                        loadPlaylist(requestedUrl)
-                    },
+                    testXtreamOption = testXtreamOption,
+                    onLoadPlaylist = ::submitConfiguredSource,
                     isTvStyle = deviceType == DeviceType.TV,
                 )
             } else {
@@ -289,8 +433,13 @@ fun PayDaIptvApp() {
                             onOpenSettings = { tvScreen = TvScreen.CONFIG },
                         )
                         tvScreen == TvScreen.CONFIG -> PlaylistScreen(
+                            sourceType = sourceType,
                             playlistUrl = playlistUrl,
                             epgUrl = epgUrl,
+                            xtreamServer = xtreamServer,
+                            xtreamUsername = xtreamUsername,
+                            xtreamPassword = xtreamPassword,
+                            onSourceTypeChange = ::changeSourceType,
                             onPlaylistUrlChange = {
                                 playlistUrl = it
                                 errorMessage = null
@@ -307,20 +456,25 @@ fun PayDaIptvApp() {
                                     }
                                 }
                             },
+                            onXtreamServerChange = {
+                                xtreamServer = it
+                                errorMessage = null
+                            },
+                            onXtreamUsernameChange = {
+                                xtreamUsername = it
+                                errorMessage = null
+                            },
+                            onXtreamPasswordChange = {
+                                xtreamPassword = it
+                                errorMessage = null
+                            },
                             isLoading = isLoading,
                             loadingMessage = loadingMessage,
                             errorMessage = errorMessage,
                             testPlaylistOptions = testPlaylistOptions,
                             testEpgOption = testEpgOption,
-                            onLoadPlaylist = {
-                                val requestedUrl = playlistUrl.trim()
-                                if (requestedUrl.isBlank()) {
-                                    errorMessage = "Introduce una URL M3U valida."
-                                    return@PlaylistScreen
-                                }
-
-                                loadPlaylist(requestedUrl)
-                            },
+                            testXtreamOption = testXtreamOption,
+                            onLoadPlaylist = ::submitConfiguredSource,
                             isTvStyle = true,
                             onBack = { tvScreen = TvScreen.HOME },
                         )
@@ -354,8 +508,13 @@ fun PayDaIptvApp() {
                             onOpenSettings = { mobileScreen = MobileScreen.CONFIG },
                         )
                         MobileScreen.CONFIG -> PlaylistScreen(
+                            sourceType = sourceType,
                             playlistUrl = playlistUrl,
                             epgUrl = epgUrl,
+                            xtreamServer = xtreamServer,
+                            xtreamUsername = xtreamUsername,
+                            xtreamPassword = xtreamPassword,
+                            onSourceTypeChange = ::changeSourceType,
                             onPlaylistUrlChange = {
                                 playlistUrl = it
                                 errorMessage = null
@@ -372,20 +531,25 @@ fun PayDaIptvApp() {
                                     }
                                 }
                             },
+                            onXtreamServerChange = {
+                                xtreamServer = it
+                                errorMessage = null
+                            },
+                            onXtreamUsernameChange = {
+                                xtreamUsername = it
+                                errorMessage = null
+                            },
+                            onXtreamPasswordChange = {
+                                xtreamPassword = it
+                                errorMessage = null
+                            },
                             isLoading = isLoading,
                             loadingMessage = loadingMessage,
                             errorMessage = errorMessage,
                             testPlaylistOptions = testPlaylistOptions,
                             testEpgOption = testEpgOption,
-                            onLoadPlaylist = {
-                                val requestedUrl = playlistUrl.trim()
-                                if (requestedUrl.isBlank()) {
-                                    errorMessage = "Introduce una URL M3U valida."
-                                    return@PlaylistScreen
-                                }
-
-                                loadPlaylist(requestedUrl)
-                            },
+                            testXtreamOption = testXtreamOption,
+                            onLoadPlaylist = ::submitConfiguredSource,
                             onBack = { mobileScreen = MobileScreen.HOME },
                         )
                         MobileScreen.LIVE_TV -> {

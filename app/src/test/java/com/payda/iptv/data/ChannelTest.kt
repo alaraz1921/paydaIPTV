@@ -52,4 +52,15 @@ class ChannelTest {
             setOf(hd.stableFavoriteId(), fhd.stableFavoriteId(), fourK.stableFavoriteId()),
         )
     }
+
+    @Test
+    fun stableFavoriteIdUsesExplicitSourceIdentifier() {
+        val channel = Channel(
+            name = "Xtream Channel",
+            streamUrl = "http://example.com/live/user/pass/123.ts",
+            favoriteId = "xtream|http://example.com|123",
+        )
+
+        assertEquals("xtream|http://example.com|123", channel.stableFavoriteId())
+    }
 }

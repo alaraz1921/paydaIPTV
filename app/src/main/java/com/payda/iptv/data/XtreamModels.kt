@@ -1,0 +1,25 @@
+package com.payda.iptv.data
+
+data class XtreamConfig(
+    val server: String,
+    val username: String,
+    val password: String,
+)
+
+data class XtreamCategory(
+    val id: String,
+    val name: String,
+)
+
+data class XtreamAccountInfo(
+    val status: String?,
+    val expiresAtEpochSeconds: Long?,
+    val maxConnections: Int?,
+    val activeConnections: Int?,
+)
+
+data class XtreamLiveData(
+    val channels: List<Channel>,
+    val categories: List<XtreamCategory>,
+    val accountInfo: XtreamAccountInfo?,
+)

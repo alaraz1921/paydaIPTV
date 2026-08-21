@@ -36,6 +36,9 @@ android {
         buildConfigField("String", "TEST_PLAYLIST_URL_1", buildConfigString(""))
         buildConfigField("String", "TEST_PLAYLIST_URL_2", buildConfigString(""))
         buildConfigField("String", "TEST_EPG_URL", buildConfigString(""))
+        buildConfigField("String", "TEST_XTREAM_SERVER", buildConfigString(""))
+        buildConfigField("String", "TEST_XTREAM_USER", buildConfigString(""))
+        buildConfigField("String", "TEST_XTREAM_PASSWORD", buildConfigString(""))
     }
 
     buildTypes {
@@ -54,6 +57,21 @@ android {
                 "String",
                 "TEST_EPG_URL",
                 buildConfigString(localProperties.getProperty("TEST_EPG_URL").orEmpty())
+            )
+            buildConfigField(
+                "String",
+                "TEST_XTREAM_SERVER",
+                buildConfigString(localProperties.getProperty("TEST_XTREAM_SERVER").orEmpty())
+            )
+            buildConfigField(
+                "String",
+                "TEST_XTREAM_USER",
+                buildConfigString(localProperties.getProperty("TEST_XTREAM_USER").orEmpty())
+            )
+            buildConfigField(
+                "String",
+                "TEST_XTREAM_PASSWORD",
+                buildConfigString(localProperties.getProperty("TEST_XTREAM_PASSWORD").orEmpty())
             )
         }
         release {
