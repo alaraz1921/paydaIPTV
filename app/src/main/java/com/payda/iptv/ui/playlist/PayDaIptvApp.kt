@@ -1,5 +1,6 @@
 package com.payda.iptv.ui.playlist
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,6 +50,7 @@ fun PayDaIptvApp() {
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
     var tvScreen by remember { mutableStateOf(TvScreen.HOME) }
+    var mobileScreen by remember { mutableStateOf(MobileScreen.HOME) }
     var tvPreviewChannel by remember { mutableStateOf<Channel?>(null) }
     var tvPreviewChannels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var lastSelectedChannelId by remember { mutableStateOf<String?>(null) }
@@ -148,6 +150,7 @@ fun PayDaIptvApp() {
                         playlistUrl = requestedUrl
                         channels = loadedChannels
                         tvScreen = TvScreen.HOME
+                        mobileScreen = MobileScreen.HOME
                         tvPreviewChannel = null
                         tvPreviewChannels = emptyList()
                         selectedCategory = AllCategoryName
@@ -237,6 +240,7 @@ fun PayDaIptvApp() {
 
                         loadPlaylist(requestedUrl)
                     },
+                    isTvStyle = deviceType == DeviceType.TV,
                 )
             } else {
                 val sharedOnToggleFavorite: (Channel) -> Unit = { channelToToggle ->
@@ -253,6 +257,7 @@ fun PayDaIptvApp() {
                     epgData = null
                     selectedChannel = null
                     tvScreen = TvScreen.HOME
+                    mobileScreen = MobileScreen.HOME
                     tvPreviewChannel = null
                     tvPreviewChannels = emptyList()
                     lastSelectedChannelId = null
@@ -280,7 +285,44 @@ fun PayDaIptvApp() {
                         tvScreen == TvScreen.HOME -> TvHomeScreen(
                             channelCount = channels.size,
                             onOpenLiveTv = { tvScreen = TvScreen.LIVE_TV },
-                            onChangePlaylist = sharedOnChangePlaylist,
+                            onChangePlaylist = { tvScreen = TvScreen.CONFIG },
+                            onOpenSettings = { tvScreen = TvScreen.CONFIG },
+                        )
+                        tvScreen == TvScreen.CONFIG -> PlaylistScreen(
+                            playlistUrl = playlistUrl,
+                            epgUrl = epgUrl,
+                            onPlaylistUrlChange = {
+                                playlistUrl = it
+                                errorMessage = null
+                                epgMessage = null
+                            },
+                            onEpgUrlChange = {
+                                epgUrl = it
+                                manualEpgUrlConfigured = it.trim().isNotBlank()
+                                epgMessage = null
+                                if (it.isBlank()) {
+                                    epgData = null
+                                    coroutineScope.launch {
+                                        settingsRepository.clearLastEpgUrl()
+                                    }
+                                }
+                            },
+                            isLoading = isLoading,
+                            loadingMessage = loadingMessage,
+                            errorMessage = errorMessage,
+                            testPlaylistOptions = testPlaylistOptions,
+                            testEpgOption = testEpgOption,
+                            onLoadPlaylist = {
+                                val requestedUrl = playlistUrl.trim()
+                                if (requestedUrl.isBlank()) {
+                                    errorMessage = "Introduce una URL M3U valida."
+                                    return@PlaylistScreen
+                                }
+
+                                loadPlaylist(requestedUrl)
+                            },
+                            isTvStyle = true,
+                            onBack = { tvScreen = TvScreen.HOME },
                         )
                         else -> TvChannelListScreen(
                             channels = channels,
@@ -304,22 +346,70 @@ fun PayDaIptvApp() {
                         )
                     }
                 } else {
-                    ChannelListScreen(
-                        channels = channels,
-                        selectedCategoryName = selectedCategory,
-                        searchQuery = searchQuery,
-                        favoriteChannelIds = favoriteChannelIds,
-                        epgData = epgData,
-                        epgNow = epgNow,
-                        epgMessage = epgMessage,
-                        playlistUrl = playlistUrl,
-                        onCategorySelected = { selectedCategory = it },
-                        onSearchQueryChange = { searchQuery = it },
-                        onClearSearch = { searchQuery = "" },
-                        onToggleFavorite = sharedOnToggleFavorite,
-                        onChannelSelected = sharedOnChannelSelected,
-                        onChangePlaylist = sharedOnChangePlaylist,
-                    )
+                    when (mobileScreen) {
+                        MobileScreen.HOME -> MobileHomeScreen(
+                            channelCount = channels.size,
+                            onOpenLiveTv = { mobileScreen = MobileScreen.LIVE_TV },
+                            onOpenPlaylist = { mobileScreen = MobileScreen.CONFIG },
+                            onOpenSettings = { mobileScreen = MobileScreen.CONFIG },
+                        )
+                        MobileScreen.CONFIG -> PlaylistScreen(
+                            playlistUrl = playlistUrl,
+                            epgUrl = epgUrl,
+                            onPlaylistUrlChange = {
+                                playlistUrl = it
+                                errorMessage = null
+                                epgMessage = null
+                            },
+                            onEpgUrlChange = {
+                                epgUrl = it
+                                manualEpgUrlConfigured = it.trim().isNotBlank()
+                                epgMessage = null
+                                if (it.isBlank()) {
+                                    epgData = null
+                                    coroutineScope.launch {
+                                        settingsRepository.clearLastEpgUrl()
+                                    }
+                                }
+                            },
+                            isLoading = isLoading,
+                            loadingMessage = loadingMessage,
+                            errorMessage = errorMessage,
+                            testPlaylistOptions = testPlaylistOptions,
+                            testEpgOption = testEpgOption,
+                            onLoadPlaylist = {
+                                val requestedUrl = playlistUrl.trim()
+                                if (requestedUrl.isBlank()) {
+                                    errorMessage = "Introduce una URL M3U valida."
+                                    return@PlaylistScreen
+                                }
+
+                                loadPlaylist(requestedUrl)
+                            },
+                            onBack = { mobileScreen = MobileScreen.HOME },
+                        )
+                        MobileScreen.LIVE_TV -> {
+                            BackHandler {
+                                mobileScreen = MobileScreen.HOME
+                            }
+                            ChannelListScreen(
+                                channels = channels,
+                                selectedCategoryName = selectedCategory,
+                                searchQuery = searchQuery,
+                                favoriteChannelIds = favoriteChannelIds,
+                                epgData = epgData,
+                                epgNow = epgNow,
+                                epgMessage = epgMessage,
+                                playlistUrl = playlistUrl,
+                                onCategorySelected = { selectedCategory = it },
+                                onSearchQueryChange = { searchQuery = it },
+                                onClearSearch = { searchQuery = "" },
+                                onToggleFavorite = sharedOnToggleFavorite,
+                                onChannelSelected = sharedOnChannelSelected,
+                                onChangePlaylist = { mobileScreen = MobileScreen.CONFIG },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -340,6 +430,13 @@ fun PayDaIptvApp() {
 private enum class TvScreen {
     HOME,
     LIVE_TV,
+    CONFIG,
+}
+
+private enum class MobileScreen {
+    HOME,
+    LIVE_TV,
+    CONFIG,
 }
 
 private fun hasEpgMatches(

@@ -1,5 +1,7 @@
 package com.payda.iptv.ui.playlist
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,11 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,9 +24,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.payda.iptv.ui.tv.TvBackground
+import com.payda.iptv.ui.tv.TvFocusableButton
+import com.payda.iptv.ui.theme.PayDaBackground
+import com.payda.iptv.ui.theme.PayDaButton
+import com.payda.iptv.ui.theme.PayDaError
+import com.payda.iptv.ui.theme.PayDaTextFieldColors
+import com.payda.iptv.ui.theme.PayDaTextPrimary
+import com.payda.iptv.ui.theme.PayDaTextSecondary
 
 @Composable
 fun PlaylistScreen(
@@ -41,21 +53,38 @@ fun PlaylistScreen(
     testEpgOption: TestPlaylistOption?,
     onLoadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
+    isTvStyle: Boolean = false,
+    onBack: (() -> Unit)? = null,
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val playlistFocusRequester = remember { FocusRequester() }
     val epgFocusRequester = remember { FocusRequester() }
     var clipboardMessage by remember { mutableStateOf<String?>(null) }
+    var playlistFieldHasFocus by remember { mutableStateOf(false) }
+    var epgFieldHasFocus by remember { mutableStateOf(false) }
+    val textFieldColors = PayDaTextFieldColors()
+    BackHandler(enabled = onBack != null) {
+        if (playlistFieldHasFocus || epgFieldHasFocus) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        } else {
+            onBack?.invoke()
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .background(if (isTvStyle) TvBackground else PayDaBackground)
+            .padding(if (isTvStyle) 48.dp else 24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.Start,
     ) {
         Text(
             text = "PayDa IPTV",
+            color = PayDaTextPrimary,
             style = MaterialTheme.typography.headlineMedium,
         )
         Spacer(modifier = Modifier.height(24.dp))
@@ -64,25 +93,31 @@ fun PlaylistScreen(
             onValueChange = onPlaylistUrlChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(playlistFocusRequester),
+                .focusRequester(playlistFocusRequester)
+                .onFocusChanged { playlistFieldHasFocus = it.hasFocus },
             label = { Text("URL de lista M3U") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             enabled = !isLoading,
+            colors = textFieldColors,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
+            PlaylistActionButton(
+                text = "Borrar",
+                isTvStyle = isTvStyle,
                 onClick = {
                     onPlaylistUrlChange("")
                     clipboardMessage = null
-                    playlistFocusRequester.requestFocus()
+                    if (!isTvStyle) {
+                        playlistFocusRequester.requestFocus()
+                    }
                 },
                 enabled = !isLoading && playlistUrl.isNotEmpty(),
-            ) {
-                Text("Borrar")
-            }
-            OutlinedButton(
+            )
+            PlaylistActionButton(
+                text = "Pegar",
+                isTvStyle = isTvStyle,
                 onClick = {
                     val clipboardText = clipboardManager.getText()?.text?.trim()
                     if (clipboardText.isNullOrBlank()) {
@@ -91,27 +126,29 @@ fun PlaylistScreen(
                         onPlaylistUrlChange(clipboardText)
                         clipboardMessage = "URL pegada. Pulsa Cargar lista para continuar."
                     }
-                    playlistFocusRequester.requestFocus()
+                    if (!isTvStyle) {
+                        playlistFocusRequester.requestFocus()
+                    }
                 },
                 enabled = !isLoading,
-            ) {
-                Text("Pegar")
-            }
+            )
         }
         if (testPlaylistOptions.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 testPlaylistOptions.forEach { option ->
-                    OutlinedButton(
+                    PlaylistActionButton(
+                        text = option.label,
+                        isTvStyle = isTvStyle,
                         onClick = {
                             onPlaylistUrlChange(option.url)
                             clipboardMessage = "${option.label} preparada. Pulsa Cargar lista."
-                            playlistFocusRequester.requestFocus()
+                            if (!isTvStyle) {
+                                playlistFocusRequester.requestFocus()
+                            }
                         },
                         enabled = !isLoading,
-                    ) {
-                        Text(option.label)
-                    }
+                    )
                 }
             }
         }
@@ -121,25 +158,31 @@ fun PlaylistScreen(
             onValueChange = onEpgUrlChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(epgFocusRequester),
+                .focusRequester(epgFocusRequester)
+                .onFocusChanged { epgFieldHasFocus = it.hasFocus },
             label = { Text("URL EPG / XMLTV") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             enabled = !isLoading,
+            colors = textFieldColors,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
+            PlaylistActionButton(
+                text = "Borrar EPG",
+                isTvStyle = isTvStyle,
                 onClick = {
                     onEpgUrlChange("")
                     clipboardMessage = null
-                    epgFocusRequester.requestFocus()
+                    if (!isTvStyle) {
+                        epgFocusRequester.requestFocus()
+                    }
                 },
                 enabled = !isLoading && epgUrl.isNotEmpty(),
-            ) {
-                Text("Borrar EPG")
-            }
-            OutlinedButton(
+            )
+            PlaylistActionButton(
+                text = "Pegar EPG",
+                isTvStyle = isTvStyle,
                 onClick = {
                     val clipboardText = clipboardManager.getText()?.text?.trim()
                     if (clipboardText.isNullOrBlank()) {
@@ -148,32 +191,42 @@ fun PlaylistScreen(
                         onEpgUrlChange(clipboardText)
                         clipboardMessage = "URL EPG pegada."
                     }
-                    epgFocusRequester.requestFocus()
+                    if (!isTvStyle) {
+                        epgFocusRequester.requestFocus()
+                    }
                 },
                 enabled = !isLoading,
-            ) {
-                Text("Pegar EPG")
-            }
+            )
             if (testEpgOption != null) {
-                OutlinedButton(
+                PlaylistActionButton(
+                    text = testEpgOption.label,
+                    isTvStyle = isTvStyle,
                     onClick = {
                         onEpgUrlChange(testEpgOption.url)
                         clipboardMessage = "${testEpgOption.label} preparada."
-                        epgFocusRequester.requestFocus()
+                        if (!isTvStyle) {
+                            epgFocusRequester.requestFocus()
+                        }
                     },
                     enabled = !isLoading,
-                ) {
-                    Text(testEpgOption.label)
-                }
+                )
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Button(
-            onClick = onLoadPlaylist,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading && playlistUrl.isNotBlank(),
-        ) {
-            Text("Cargar lista")
+        if (isTvStyle) {
+            TvFocusableButton(
+                text = "Cargar lista",
+                onClick = onLoadPlaylist,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading && playlistUrl.isNotBlank(),
+            )
+        } else {
+            PayDaButton(
+                text = "Cargar lista",
+                onClick = onLoadPlaylist,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading && playlistUrl.isNotBlank(),
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
         if (isLoading) {
@@ -182,7 +235,7 @@ fun PlaylistScreen(
                 Text(
                     text = loadingMessage,
                     modifier = Modifier.padding(top = 12.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = PayDaTextSecondary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -191,7 +244,7 @@ fun PlaylistScreen(
             Text(
                 text = clipboardMessage.orEmpty(),
                 modifier = Modifier.padding(top = 16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = PayDaTextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -199,10 +252,32 @@ fun PlaylistScreen(
             Text(
                 text = errorMessage,
                 modifier = Modifier.padding(top = 16.dp),
-                color = MaterialTheme.colorScheme.error,
+                color = PayDaError,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
+    }
+}
+
+@Composable
+private fun PlaylistActionButton(
+    text: String,
+    isTvStyle: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    if (isTvStyle) {
+        TvFocusableButton(
+            text = text,
+            onClick = onClick,
+            enabled = enabled,
+        )
+    } else {
+        PayDaButton(
+            text = text,
+            onClick = onClick,
+            enabled = enabled,
+        )
     }
 }
 

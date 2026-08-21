@@ -1,9 +1,6 @@
 package com.payda.iptv.ui.tv
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,21 +10,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +31,7 @@ fun TvHomeScreen(
     channelCount: Int,
     onOpenLiveTv: () -> Unit,
     onChangePlaylist: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val liveFocusRequester = remember { FocusRequester() }
@@ -109,14 +101,15 @@ fun TvHomeScreen(
         Spacer(modifier = Modifier.height(28.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            TvSecondaryAction(
+            TvFocusableButton(
                 text = "Playlist",
                 onClick = onChangePlaylist,
+                modifier = Modifier.width(180.dp),
             )
-            TvSecondaryAction(
+            TvFocusableButton(
                 text = "Configuracion",
-                onClick = {},
-                enabled = false,
+                onClick = onOpenSettings,
+                modifier = Modifier.width(180.dp),
             )
         }
     }
@@ -130,23 +123,11 @@ private fun TvHomeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var hasFocus by remember { mutableStateOf(false) }
-    Surface(
+    TvFocusableCard(
+        onClick = onClick,
         modifier = modifier
-            .height(210.dp)
-            .onFocusChanged { hasFocus = it.hasFocus }
-            .focusable(enabled)
-            .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = when {
-            !enabled -> Color(0xFF141A20)
-            hasFocus -> Color(0xFF26374A)
-            else -> Color(0xFF1A232B)
-        },
-        border = BorderStroke(
-            width = if (hasFocus) 3.dp else 1.dp,
-            color = if (hasFocus) Color.White else Color(0xFF2F3B46),
-        ),
+            .height(210.dp),
+        enabled = enabled,
     ) {
         Column(
             modifier = Modifier.padding(24.dp),
@@ -154,7 +135,7 @@ private fun TvHomeCard(
         ) {
             Text(
                 text = title,
-                color = if (enabled) Color.White else Color(0xFF64748B),
+                color = if (enabled) Color.White else TvDisabledText,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -162,41 +143,7 @@ private fun TvHomeCard(
             )
             Text(
                 text = subtitle,
-                color = if (enabled) Color(0xFFCBD5E1) else Color(0xFF64748B),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TvSecondaryAction(
-    text: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
-    var hasFocus by remember { mutableStateOf(false) }
-    Surface(
-        modifier = Modifier
-            .width(180.dp)
-            .height(56.dp)
-            .onFocusChanged { hasFocus = it.hasFocus }
-            .focusable(enabled)
-            .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = if (hasFocus) Color(0xFF26374A) else Color(0xFF151C22),
-        border = BorderStroke(
-            width = if (hasFocus) 2.dp else 1.dp,
-            color = if (hasFocus) Color.White else Color(0xFF2F3B46),
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = text,
-                color = if (enabled) Color.White else Color(0xFF64748B),
+                color = if (enabled) Color(0xFFCBD5E1) else TvDisabledText,
                 style = MaterialTheme.typography.titleMedium,
             )
         }

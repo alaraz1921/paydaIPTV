@@ -6,7 +6,6 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -17,10 +16,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -176,9 +175,15 @@ fun TvChannelPreviewScreen(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
-            Button(onClick = { onToggleFavorite(currentChannel) }) {
-                Text(if (currentChannel.stableFavoriteId() in favoriteChannelIds) "Quitar favorito" else "Favorito")
-            }
+            TvFocusableButton(
+                text = if (currentChannel.stableFavoriteId() in favoriteChannelIds) {
+                    "Quitar favorito"
+                } else {
+                    "Favorito"
+                },
+                onClick = { onToggleFavorite(currentChannel) },
+                modifier = Modifier.width(210.dp),
+            )
         }
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -196,7 +201,6 @@ fun TvChannelPreviewScreen(
                         .fillMaxWidth()
                         .weight(1f)
                         .onFocusChanged { videoHasFocus = it.hasFocus }
-                        .focusable()
                         .clickable { isFullScreen = true },
                     shape = RoundedCornerShape(8.dp),
                     color = Color.Black,
@@ -217,9 +221,11 @@ fun TvChannelPreviewScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Button(onClick = { isFullScreen = true }) {
-                    Text("Pantalla completa")
-                }
+                TvFocusableButton(
+                    text = "Pantalla completa",
+                    onClick = { isFullScreen = true },
+                    modifier = Modifier.width(230.dp),
+                )
             }
 
             LazyColumn(
@@ -282,7 +288,6 @@ private fun PreviewChannelRow(
             .fillMaxWidth()
             .height(58.dp)
             .onFocusChanged { hasFocus = it.hasFocus }
-            .focusable()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = when {
@@ -300,7 +305,9 @@ private fun PreviewChannelRow(
             TvChannelLogo(
                 logoUrl = channel.logoUrl,
                 channelName = channel.name,
-                modifier = Modifier.height(38.dp).fillMaxWidth(0.13f),
+                modifier = Modifier
+                    .width(48.dp)
+                    .height(38.dp),
             )
             Text(
                 text = channel.name,

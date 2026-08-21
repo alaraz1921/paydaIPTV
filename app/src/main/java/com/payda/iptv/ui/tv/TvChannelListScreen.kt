@@ -5,7 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -246,7 +245,6 @@ fun TvChannelListScreen(
                                     false
                                 }
                             },
-                        onToggleFavorite = { onToggleFavorite(channel) },
                         onClick = { onChannelSelected(channel, visibleChannels) },
                     )
                 }
@@ -277,7 +275,6 @@ private fun TvCategoryRow(
                     false
                 }
             }
-            .focusable()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = when {
@@ -316,7 +313,6 @@ private fun TvChannelCard(
     epgData: EpgData?,
     epgNow: Instant,
     modifier: Modifier = Modifier,
-    onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
 ) {
     var hasFocus by remember { mutableStateOf(false) }
@@ -328,7 +324,6 @@ private fun TvChannelCard(
             .fillMaxWidth()
             .aspectRatio(1.55f)
             .onFocusChanged { hasFocus = it.hasFocus }
-            .focusable()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = if (hasFocus) Color(0xFF26374A) else Color(0xFF151C22),
@@ -350,12 +345,15 @@ private fun TvChannelCard(
                     channelName = channel.name,
                     modifier = Modifier.size(88.dp),
                 )
-                TextButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier.align(Alignment.TopEnd),
-                ) {
-                    Text(if (isFavorite) "*" else "+")
-                }
+                Text(
+                    text = if (isFavorite) "*" else "",
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
             }
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

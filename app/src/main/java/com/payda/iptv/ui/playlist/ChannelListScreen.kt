@@ -4,7 +4,6 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +18,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +41,14 @@ import com.payda.iptv.data.Channel
 import com.payda.iptv.data.stableFavoriteId
 import com.payda.iptv.epg.EpgData
 import com.payda.iptv.epg.timeRangeText
+import com.payda.iptv.ui.theme.PayDaBackground
+import com.payda.iptv.ui.theme.PayDaBorder
+import com.payda.iptv.ui.theme.PayDaButton
+import com.payda.iptv.ui.theme.PayDaError
+import com.payda.iptv.ui.theme.PayDaSurface
+import com.payda.iptv.ui.theme.PayDaSurfaceHigh
+import com.payda.iptv.ui.theme.PayDaTextPrimary
+import com.payda.iptv.ui.theme.PayDaTextSecondary
 import java.time.Instant
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -83,34 +90,37 @@ fun ChannelListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(PayDaBackground)
             .padding(16.dp),
     ) {
         Text(
             text = "Canales",
+            color = PayDaTextPrimary,
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
             text = "${visibleChannels.size} de ${channels.size} canales",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = PayDaTextSecondary,
         )
         Text(
             text = playlistUrl,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = PayDaTextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Button(onClick = onChangePlaylist) {
-            Text("Cambiar lista")
-        }
+        PayDaButton(
+            text = "Playlist",
+            onClick = onChangePlaylist,
+        )
         if (!epgMessage.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = epgMessage,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = PayDaError,
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -120,6 +130,17 @@ fun ChannelListScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Buscar canal") },
             singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = PayDaTextPrimary,
+                unfocusedTextColor = PayDaTextPrimary,
+                focusedContainerColor = PayDaSurface,
+                unfocusedContainerColor = PayDaSurface,
+                focusedBorderColor = PayDaTextPrimary,
+                unfocusedBorderColor = PayDaBorder,
+                focusedLabelColor = PayDaTextPrimary,
+                unfocusedLabelColor = PayDaTextSecondary,
+                cursorColor = PayDaTextPrimary,
+            ),
             trailingIcon = {
                 if (searchQuery.isNotBlank()) {
                     TextButton(onClick = onClearSearch) {
@@ -177,10 +198,10 @@ private fun ChannelRow(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .focusable()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        tonalElevation = 1.dp,
+        color = PayDaSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, PayDaBorder),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -195,6 +216,7 @@ private fun ChannelRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = channel.name,
+                    color = PayDaTextPrimary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -204,7 +226,7 @@ private fun ChannelRow(
                     Text(
                         text = channel.group,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = PayDaTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -215,14 +237,14 @@ private fun ChannelRow(
                     Text(
                         text = currentProgramme.title,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = PayDaTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = currentProgramme.timeRangeText(),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = PayDaTextSecondary,
                         maxLines = 1,
                     )
                 }
@@ -231,15 +253,17 @@ private fun ChannelRow(
                     Text(
                         text = "Despues: ${nextProgramme.title}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = PayDaTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            TextButton(onClick = onToggleFavorite) {
-                Text(if (isFavorite) "Quitar" else "Favorito")
-            }
+            PayDaButton(
+                text = if (isFavorite) "Quitar" else "Favorito",
+                onClick = onToggleFavorite,
+                height = 42.dp,
+            )
         }
     }
 }
@@ -262,7 +286,7 @@ private fun EmptyChannelState(
     Text(
         text = message,
         modifier = modifier.padding(24.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = PayDaTextSecondary,
         style = MaterialTheme.typography.bodyMedium,
     )
 }
@@ -279,7 +303,7 @@ private fun ChannelLogo(
 
     Box(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+            .background(PayDaSurfaceHigh, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (logo.value != null) {

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +37,9 @@ import androidx.media3.ui.PlayerView
 import com.payda.iptv.data.Channel
 import com.payda.iptv.epg.ChannelEpgInfo
 import com.payda.iptv.epg.timeRangeText
+import com.payda.iptv.ui.theme.PayDaButton
+import com.payda.iptv.ui.theme.PayDaTextPrimary
+import com.payda.iptv.ui.theme.PayDaTextSecondary
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -135,19 +137,19 @@ fun PlayerScreen(
                 .align(Alignment.TopStart)
                 .padding(16.dp),
         ) {
-            Button(onClick = onBack) {
-                Text("Volver")
-            }
-            Button(
+            PayDaButton(
+                text = "Volver",
+                onClick = onBack,
+            )
+            PayDaButton(
+                text = if (isFavorite) "Quitar favorito" else "Marcar favorito",
                 onClick = onToggleFavorite,
                 modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text(if (isFavorite) "Quitar favorito" else "Marcar favorito")
-            }
+            )
             Text(
                 text = channel.name,
                 modifier = Modifier.padding(top = 8.dp),
-                color = Color.White,
+                color = PayDaTextPrimary,
                 style = MaterialTheme.typography.titleMedium,
             )
             val currentProgramme = epgInfo?.current
@@ -155,12 +157,12 @@ fun PlayerScreen(
                 Text(
                     text = currentProgramme.title,
                     modifier = Modifier.padding(top = 4.dp),
-                    color = Color.White,
+                    color = PayDaTextPrimary,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
                     text = currentProgramme.timeRangeText(),
-                    color = Color.White,
+                    color = PayDaTextSecondary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -168,7 +170,7 @@ fun PlayerScreen(
             if (nextProgramme != null) {
                 Text(
                     text = "Despues: ${nextProgramme.title}",
-                    color = Color.White,
+                    color = PayDaTextSecondary,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
