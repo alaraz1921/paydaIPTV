@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.payda.iptv.data.EpisodeProgress
 import com.payda.iptv.data.MovieProgress
 import com.payda.iptv.data.PlaylistConfig
 import com.payda.iptv.data.PlaylistConfigStatus
@@ -76,6 +77,22 @@ class SettingsRepository(
             .orEmpty()
             .mapNotNull(::decodeMovieProgress)
             .firstOrNull { it.movieId == movieId }
+    }
+
+    suspend fun getEpisodeProgress(episodeId: String): EpisodeProgress? {
+        return dataStore.data.first()[EpisodeProgressKey]
+            .orEmpty()
+            .mapNotNull(::decodeEpisodeProgress)
+            .firstOrNull { it.episodeId == episodeId }
+    }
+
+    suspend fun getEpisodeProgressForIds(episodeIds: Set<String>): Map<String, EpisodeProgress> {
+        if (episodeIds.isEmpty()) return emptyMap()
+        return dataStore.data.first()[EpisodeProgressKey]
+            .orEmpty()
+            .mapNotNull(::decodeEpisodeProgress)
+            .filter { it.episodeId in episodeIds }
+            .associateBy { it.episodeId }
     }
 
     suspend fun saveLastPlaylistUrl(url: String) {
@@ -229,7 +246,7 @@ class SettingsRepository(
 
     suspend fun saveMovieProgress(progress: MovieProgress) {
         dataStore.edit { preferences ->
-            val encodedMovieId = encodeMovieId(progress.movieId)
+            val encodedMovieId = encodeStoredId(progress.movieId)
             val currentProgress = preferences[MovieProgressKey].orEmpty()
                 .filterNot { it.substringBefore("|") == encodedMovieId }
                 .toSet()
@@ -239,33 +256,74 @@ class SettingsRepository(
 
     suspend fun clearMovieProgress(movieId: String) {
         dataStore.edit { preferences ->
-            val encodedMovieId = encodeMovieId(movieId)
+            val encodedMovieId = encodeStoredId(movieId)
             preferences[MovieProgressKey] = preferences[MovieProgressKey].orEmpty()
                 .filterNot { it.substringBefore("|") == encodedMovieId }
                 .toSet()
         }
     }
 
+    suspend fun saveEpisodeProgress(progress: EpisodeProgress) {
+        dataStore.edit { preferences ->
+            val encodedEpisodeId = encodeStoredId(progress.episodeId)
+            val currentProgress = preferences[EpisodeProgressKey].orEmpty()
+                .filterNot { it.substringBefore("|") == encodedEpisodeId }
+                .toSet()
+            preferences[EpisodeProgressKey] = currentProgress + encodeEpisodeProgress(progress)
+        }
+    }
+
+    suspend fun clearEpisodeProgress(episodeId: String) {
+        dataStore.edit { preferences ->
+            val encodedEpisodeId = encodeStoredId(episodeId)
+            preferences[EpisodeProgressKey] = preferences[EpisodeProgressKey].orEmpty()
+                .filterNot { it.substringBefore("|") == encodedEpisodeId }
+                .toSet()
+        }
+    }
+
     private fun encodeMovieProgress(progress: MovieProgress): String {
-        return "${encodeMovieId(progress.movieId)}|${progress.positionMillis}|${progress.durationMillis}"
+        return "${encodeStoredId(progress.movieId)}|${progress.positionMillis}|${progress.durationMillis}"
     }
 
     private fun decodeMovieProgress(value: String): MovieProgress? {
         val parts = value.split("|")
         if (parts.size != 3) return null
         return MovieProgress(
-            movieId = decodeMovieId(parts[0]),
+            movieId = decodeStoredId(parts[0]),
             positionMillis = parts[1].toLongOrNull() ?: return null,
             durationMillis = parts[2].toLongOrNull() ?: return null,
         )
     }
 
-    private fun encodeMovieId(movieId: String): String {
-        return URLEncoder.encode(movieId, Charsets.UTF_8.name())
+    private fun encodeEpisodeProgress(progress: EpisodeProgress): String {
+        return listOf(
+            encodeStoredId(progress.episodeId),
+            progress.positionMillis,
+            progress.durationMillis,
+            if (progress.watched) 1 else 0,
+            progress.updatedAtEpochMillis,
+        ).joinToString("|")
     }
 
-    private fun decodeMovieId(movieId: String): String {
-        return URLDecoder.decode(movieId, Charsets.UTF_8.name())
+    private fun decodeEpisodeProgress(value: String): EpisodeProgress? {
+        val parts = value.split("|")
+        if (parts.size != 5) return null
+        return EpisodeProgress(
+            episodeId = decodeStoredId(parts[0]),
+            positionMillis = parts[1].toLongOrNull() ?: return null,
+            durationMillis = parts[2].toLongOrNull() ?: return null,
+            watched = parts[3] == "1",
+            updatedAtEpochMillis = parts[4].toLongOrNull() ?: return null,
+        )
+    }
+
+    private fun encodeStoredId(id: String): String {
+        return URLEncoder.encode(id, Charsets.UTF_8.name())
+    }
+
+    private fun decodeStoredId(id: String): String {
+        return URLDecoder.decode(id, Charsets.UTF_8.name())
     }
 
     private fun encodePlaylistConfig(config: PlaylistConfig): String {
@@ -346,6 +404,7 @@ class SettingsRepository(
         val XtreamPasswordKey = stringPreferencesKey("xtream_password")
         val FavoriteChannelIdsKey = stringSetPreferencesKey("favorite_channel_ids")
         val MovieProgressKey = stringSetPreferencesKey("movie_progress")
+        val EpisodeProgressKey = stringSetPreferencesKey("episode_progress")
         val PlaylistConfigsKey = stringSetPreferencesKey("playlist_configs")
     }
 }

@@ -18,9 +18,15 @@ import com.payda.iptv.data.Movie
 import com.payda.iptv.data.MovieCategory
 import com.payda.iptv.data.MovieProgress
 import com.payda.iptv.data.NetworkConnectivity
+import com.payda.iptv.data.Episode
+import com.payda.iptv.data.EpisodeProgress
 import com.payda.iptv.data.PlaylistConfig
 import com.payda.iptv.data.PlaylistConfigStatus
 import com.payda.iptv.data.PlaylistSourceType
+import com.payda.iptv.data.Season
+import com.payda.iptv.data.Series
+import com.payda.iptv.data.SeriesCategory
+import com.payda.iptv.data.SeriesDetail
 import com.payda.iptv.data.XtreamConfig
 import com.payda.iptv.data.XtreamAccountInfo
 import com.payda.iptv.data.XtreamRepository
@@ -76,6 +82,18 @@ fun PayDaIptvApp() {
     var movieProgress by remember { mutableStateOf<MovieProgress?>(null) }
     var moviePlayerStartPosition by remember { mutableStateOf(0L) }
     var movieErrorMessage by remember { mutableStateOf<String?>(null) }
+    var seriesCatalog by remember { mutableStateOf<List<Series>>(emptyList()) }
+    var seriesCategories by remember { mutableStateOf<List<SeriesCategory>>(emptyList()) }
+    var selectedSeriesCategoryId by remember { mutableStateOf(SeriesAllCategory) }
+    var seriesSearchQuery by remember { mutableStateOf("") }
+    var selectedSeriesDetail by remember { mutableStateOf<SeriesDetail?>(null) }
+    var selectedSeriesSeasonId by remember { mutableStateOf<String?>(null) }
+    var selectedEpisode by remember { mutableStateOf<Episode?>(null) }
+    var playingEpisode by remember { mutableStateOf<Episode?>(null) }
+    var episodePlayerStartPosition by remember { mutableStateOf(0L) }
+    var episodeProgressMap by remember { mutableStateOf<Map<String, EpisodeProgress>>(emptyMap()) }
+    var seriesDetailCache by remember { mutableStateOf<Map<String, SeriesDetail>>(emptyMap()) }
+    var seriesErrorMessage by remember { mutableStateOf<String?>(null) }
     var tvScreen by remember { mutableStateOf(TvScreen.HOME) }
     var mobileScreen by remember { mutableStateOf(MobileScreen.HOME) }
     var tvPreviewChannel by remember { mutableStateOf<Channel?>(null) }
@@ -144,6 +162,18 @@ fun PayDaIptvApp() {
         movieProgress = null
         moviePlayerStartPosition = 0L
         movieErrorMessage = null
+        seriesCatalog = emptyList()
+        seriesCategories = emptyList()
+        selectedSeriesCategoryId = SeriesAllCategory
+        seriesSearchQuery = ""
+        selectedSeriesDetail = null
+        selectedSeriesSeasonId = null
+        selectedEpisode = null
+        playingEpisode = null
+        episodePlayerStartPosition = 0L
+        episodeProgressMap = emptyMap()
+        seriesDetailCache = emptyMap()
+        seriesErrorMessage = null
         tvScreen = TvScreen.HOME
         mobileScreen = MobileScreen.HOME
         tvPreviewChannel = null
@@ -274,6 +304,14 @@ fun PayDaIptvApp() {
                         playingMovie = null
                         movieProgress = null
                         movieErrorMessage = null
+                        seriesCatalog = emptyList()
+                        seriesCategories = emptyList()
+                        selectedSeriesDetail = null
+                        selectedEpisode = null
+                        playingEpisode = null
+                        episodeProgressMap = emptyMap()
+                        seriesDetailCache = emptyMap()
+                        seriesErrorMessage = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
                         showPlaylistConfigEditor = false
@@ -362,6 +400,14 @@ fun PayDaIptvApp() {
                         playingMovie = null
                         movieProgress = null
                         movieErrorMessage = null
+                        seriesCatalog = emptyList()
+                        seriesCategories = emptyList()
+                        selectedSeriesDetail = null
+                        selectedEpisode = null
+                        playingEpisode = null
+                        episodeProgressMap = emptyMap()
+                        seriesDetailCache = emptyMap()
+                        seriesErrorMessage = null
                         epgData = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
@@ -473,6 +519,91 @@ fun PayDaIptvApp() {
                         selectedMovie = detailedMovie
                     }
             }
+        }
+    }
+
+    fun loadSeries(message: String? = "Cargando series...") {
+        if (sourceType != PlaylistSourceType.XTREAM) {
+            seriesErrorMessage = "Series disponible con Xtream."
+            tvScreen = TvScreen.SERIES
+            mobileScreen = MobileScreen.SERIES
+            return
+        }
+        val config = currentXtreamConfigOrNull()
+        if (config == null) {
+            seriesErrorMessage = "Configura Xtream para ver series."
+            tvScreen = TvScreen.SERIES
+            mobileScreen = MobileScreen.SERIES
+            return
+        }
+        coroutineScope.launch {
+            isLoading = true
+            loadingMessage = message
+            seriesErrorMessage = null
+            if (!networkConnectivity.hasInternetConnection()) {
+                seriesErrorMessage = "Sin conexion a Internet"
+                tvScreen = TvScreen.SERIES
+                mobileScreen = MobileScreen.SERIES
+                loadingMessage = null
+                isLoading = false
+                return@launch
+            }
+            runCatching { xtreamRepository.loadSeriesCatalog(config) }
+                .onSuccess { catalog ->
+                    seriesCatalog = catalog.series
+                    seriesCategories = catalog.categories
+                    selectedSeriesCategoryId = SeriesAllCategory
+                    seriesSearchQuery = ""
+                    selectedSeriesDetail = null
+                    selectedEpisode = null
+                    playingEpisode = null
+                    episodeProgressMap = emptyMap()
+                    seriesErrorMessage = if (catalog.series.isEmpty()) {
+                        "La fuente Xtream no contiene series validas."
+                    } else {
+                        null
+                    }
+                    tvScreen = TvScreen.SERIES
+                    mobileScreen = MobileScreen.SERIES
+                }
+                .onFailure { error ->
+                    seriesErrorMessage = error.message ?: "No se pudo cargar series Xtream."
+                    tvScreen = TvScreen.SERIES
+                    mobileScreen = MobileScreen.SERIES
+                }
+            loadingMessage = null
+            isLoading = false
+        }
+    }
+
+    fun openSeries(series: Series) {
+        selectedSeriesDetail = seriesDetailCache[series.id]
+        selectedSeriesSeasonId = null
+        selectedEpisode = null
+        seriesErrorMessage = null
+        coroutineScope.launch {
+            val cached = seriesDetailCache[series.id]
+            val detail = if (cached != null) {
+                cached
+            } else {
+                val config = currentXtreamConfigOrNull()
+                if (config == null || !networkConnectivity.hasInternetConnection()) {
+                    seriesErrorMessage = "No se pudo cargar la ficha de la serie."
+                    return@launch
+                }
+                runCatching { xtreamRepository.loadSeriesInfo(config, series) }
+                    .onSuccess { loadedDetail ->
+                        seriesDetailCache = seriesDetailCache + (series.id to loadedDetail)
+                    }
+                    .getOrElse { error ->
+                        seriesErrorMessage = error.message ?: "No se pudo cargar la ficha de la serie."
+                        return@launch
+                    }
+            }
+            selectedSeriesDetail = detail
+            selectedSeriesSeasonId = null
+            val episodeIds = detail.episodesBySeasonId.values.flatten().map { it.progressId }.toSet()
+            episodeProgressMap = settingsRepository.getEpisodeProgressForIds(episodeIds)
         }
     }
 
@@ -609,6 +740,18 @@ fun PayDaIptvApp() {
                     movieProgress = null
                     moviePlayerStartPosition = 0L
                     movieErrorMessage = null
+                    seriesCatalog = emptyList()
+                    seriesCategories = emptyList()
+                    selectedSeriesCategoryId = SeriesAllCategory
+                    seriesSearchQuery = ""
+                    selectedSeriesDetail = null
+                    selectedSeriesSeasonId = null
+                    selectedEpisode = null
+                    playingEpisode = null
+                    episodePlayerStartPosition = 0L
+                    episodeProgressMap = emptyMap()
+                    seriesDetailCache = emptyMap()
+                    seriesErrorMessage = null
                     tvScreen = TvScreen.HOME
                     mobileScreen = MobileScreen.HOME
                     tvPreviewChannel = null
@@ -624,6 +767,12 @@ fun PayDaIptvApp() {
                 } else {
                     "Disponible con Xtream"
                 }
+                val seriesEnabled = sourceType == PlaylistSourceType.XTREAM
+                val seriesSubtitle = if (seriesEnabled) {
+                    if (seriesCatalog.isEmpty()) "Catalogo Series" else "${seriesCatalog.size} series"
+                } else {
+                    "Disponible con Xtream"
+                }
                 val accountSummary = xtreamAccountInfo?.expiresAtEpochSeconds
                     ?.let(::formatXtreamDate)
                     ?.let { "Cuenta activa · Expira: $it" }
@@ -636,6 +785,17 @@ fun PayDaIptvApp() {
                         movieProgress = null
                         tvScreen = TvScreen.MOVIES
                         mobileScreen = MobileScreen.MOVIES
+                    }
+                }
+                val openSeriesFromHome: () -> Unit = {
+                    if (seriesCatalog.isEmpty()) {
+                        loadSeries()
+                    } else {
+                        selectedSeriesDetail = null
+                        selectedEpisode = null
+                        playingEpisode = null
+                        tvScreen = TvScreen.SERIES
+                        mobileScreen = MobileScreen.SERIES
                     }
                 }
                 val toggleMovieFavorite: (Movie) -> Unit = { movieToToggle ->
@@ -664,6 +824,51 @@ fun PayDaIptvApp() {
                         } else if (movieId != null) {
                             settingsRepository.clearMovieProgress(movieId)
                         }
+                    }
+                }
+                val toggleSeriesFavorite: (Series) -> Unit = { seriesToToggle ->
+                    coroutineScope.launch {
+                        settingsRepository.toggleFavorite(seriesToToggle.favoriteId)
+                    }
+                }
+                val selectedEpisodes: List<Episode> = selectedSeriesDetail
+                    ?.let { detail -> selectedSeriesSeasonId?.let { detail.episodesBySeasonId[it] } ?: detail.episodesBySeasonId.values.firstOrNull() }
+                    .orEmpty()
+                val playEpisode: (Episode, Boolean) -> Unit = { episodeToPlay, resume ->
+                    playingEpisode = episodeToPlay
+                    episodePlayerStartPosition = if (resume) {
+                        episodeProgressMap[episodeToPlay.progressId]?.takeIf { it.shouldResume() }?.positionMillis ?: 0L
+                    } else {
+                        0L
+                    }
+                    if (!resume) {
+                        coroutineScope.launch {
+                            settingsRepository.clearEpisodeProgress(episodeToPlay.progressId)
+                        }
+                    }
+                }
+                val saveEpisodeProgress: (EpisodeProgress?) -> Unit = { progress ->
+                    val episodeId = playingEpisode?.progressId
+                    coroutineScope.launch {
+                        if (progress != null) {
+                            settingsRepository.saveEpisodeProgress(progress)
+                            episodeProgressMap = episodeProgressMap + (progress.episodeId to progress)
+                        } else if (episodeId != null) {
+                            settingsRepository.clearEpisodeProgress(episodeId)
+                            episodeProgressMap = episodeProgressMap - episodeId
+                        }
+                    }
+                }
+                val playNextEpisode: () -> Unit = {
+                    val current = playingEpisode
+                    val nextEpisode = current?.let { episode ->
+                        val index = selectedEpisodes.indexOfFirst { it.progressId == episode.progressId }
+                        selectedEpisodes.getOrNull(index + 1)
+                    }
+                    if (nextEpisode != null) {
+                        playingEpisode = nextEpisode
+                        selectedEpisode = nextEpisode
+                        episodePlayerStartPosition = 0L
                     }
                 }
                 val openAddPlaylist: () -> Unit = {
@@ -726,6 +931,63 @@ fun PayDaIptvApp() {
                 if (deviceType == DeviceType.TV) {
                     val previewChannel = tvPreviewChannel
                     when {
+                        playingEpisode != null -> EpisodePlayerScreen(
+                            episode = playingEpisode!!,
+                            startPositionMillis = episodePlayerStartPosition,
+                            hasNextEpisode = selectedEpisodes.indexOfFirst { it.progressId == playingEpisode!!.progressId }
+                                .let { it >= 0 && it < selectedEpisodes.lastIndex },
+                            onSaveProgress = saveEpisodeProgress,
+                            onPlayNext = playNextEpisode,
+                            onBack = { playingEpisode = null },
+                        )
+                        selectedEpisode != null -> EpisodeResumeScreen(
+                            episode = selectedEpisode!!,
+                            progress = episodeProgressMap[selectedEpisode!!.progressId],
+                            onPlay = { resume -> playEpisode(selectedEpisode!!, resume) },
+                            onBack = { selectedEpisode = null },
+                        )
+                        selectedSeriesDetail != null && selectedSeriesSeasonId != null -> {
+                            val season = selectedSeriesDetail!!.seasons.firstOrNull { it.id == selectedSeriesSeasonId }
+                            if (season != null) {
+                                SeriesEpisodesScreen(
+                                    series = selectedSeriesDetail!!.series,
+                                    season = season,
+                                    episodes = selectedSeriesDetail!!.episodesBySeasonId[season.id].orEmpty(),
+                                    episodeProgress = episodeProgressMap,
+                                    isTv = true,
+                                    onEpisodeSelected = { selectedEpisode = it },
+                                    onBack = { selectedSeriesSeasonId = null },
+                                )
+                            }
+                        }
+                        selectedSeriesDetail != null -> SeriesDetailScreen(
+                            detail = selectedSeriesDetail!!,
+                            episodeProgress = episodeProgressMap,
+                            isFavorite = selectedSeriesDetail!!.series.favoriteId in favoriteChannelIds,
+                            isTv = true,
+                            errorMessage = seriesErrorMessage,
+                            onSeasonSelected = { selectedSeriesSeasonId = it.id },
+                            onToggleFavorite = { toggleSeriesFavorite(selectedSeriesDetail!!.series) },
+                            onBack = {
+                                selectedSeriesDetail = null
+                                selectedSeriesSeasonId = null
+                                selectedEpisode = null
+                            },
+                        )
+                        tvScreen == TvScreen.SERIES -> SeriesCatalogScreen(
+                            series = seriesCatalog,
+                            categories = seriesCategories,
+                            favoriteIds = favoriteChannelIds,
+                            selectedCategoryId = selectedSeriesCategoryId,
+                            searchQuery = seriesSearchQuery,
+                            isTv = true,
+                            errorMessage = seriesErrorMessage,
+                            continuingProgress = emptyList(),
+                            onCategorySelected = { selectedSeriesCategoryId = it },
+                            onSearchQueryChange = { seriesSearchQuery = it },
+                            onSeriesSelected = ::openSeries,
+                            onBack = { tvScreen = TvScreen.HOME },
+                        )
                         playingMovie != null -> MoviePlayerScreen(
                             movie = playingMovie!!,
                             startPositionMillis = moviePlayerStartPosition,
@@ -786,9 +1048,12 @@ fun PayDaIptvApp() {
                             channelCount = channels.size,
                             moviesEnabled = moviesEnabled,
                             moviesSubtitle = moviesSubtitle,
+                            seriesEnabled = seriesEnabled,
+                            seriesSubtitle = seriesSubtitle,
                             accountSummary = accountSummary,
                             onOpenLiveTv = { tvScreen = TvScreen.LIVE_TV },
                             onOpenMovies = openMoviesFromHome,
+                            onOpenSeries = openSeriesFromHome,
                             onOpenAccount = { tvScreen = TvScreen.ACCOUNT },
                             onChangePlaylist = { tvScreen = TvScreen.PLAYLISTS },
                         )
@@ -872,6 +1137,49 @@ fun PayDaIptvApp() {
                     }
                 } else {
                     when {
+                        playingEpisode != null -> EpisodePlayerScreen(
+                            episode = playingEpisode!!,
+                            startPositionMillis = episodePlayerStartPosition,
+                            hasNextEpisode = selectedEpisodes.indexOfFirst { it.progressId == playingEpisode!!.progressId }
+                                .let { it >= 0 && it < selectedEpisodes.lastIndex },
+                            onSaveProgress = saveEpisodeProgress,
+                            onPlayNext = playNextEpisode,
+                            onBack = { playingEpisode = null },
+                        )
+                        selectedEpisode != null -> EpisodeResumeScreen(
+                            episode = selectedEpisode!!,
+                            progress = episodeProgressMap[selectedEpisode!!.progressId],
+                            onPlay = { resume -> playEpisode(selectedEpisode!!, resume) },
+                            onBack = { selectedEpisode = null },
+                        )
+                        selectedSeriesDetail != null && selectedSeriesSeasonId != null -> {
+                            val season = selectedSeriesDetail!!.seasons.firstOrNull { it.id == selectedSeriesSeasonId }
+                            if (season != null) {
+                                SeriesEpisodesScreen(
+                                    series = selectedSeriesDetail!!.series,
+                                    season = season,
+                                    episodes = selectedSeriesDetail!!.episodesBySeasonId[season.id].orEmpty(),
+                                    episodeProgress = episodeProgressMap,
+                                    isTv = false,
+                                    onEpisodeSelected = { selectedEpisode = it },
+                                    onBack = { selectedSeriesSeasonId = null },
+                                )
+                            }
+                        }
+                        selectedSeriesDetail != null -> SeriesDetailScreen(
+                            detail = selectedSeriesDetail!!,
+                            episodeProgress = episodeProgressMap,
+                            isFavorite = selectedSeriesDetail!!.series.favoriteId in favoriteChannelIds,
+                            isTv = false,
+                            errorMessage = seriesErrorMessage,
+                            onSeasonSelected = { selectedSeriesSeasonId = it.id },
+                            onToggleFavorite = { toggleSeriesFavorite(selectedSeriesDetail!!.series) },
+                            onBack = {
+                                selectedSeriesDetail = null
+                                selectedSeriesSeasonId = null
+                                selectedEpisode = null
+                            },
+                        )
                         playingMovie != null -> MoviePlayerScreen(
                             movie = playingMovie!!,
                             startPositionMillis = moviePlayerStartPosition,
@@ -892,9 +1200,12 @@ fun PayDaIptvApp() {
                             channelCount = channels.size,
                             moviesEnabled = moviesEnabled,
                             moviesSubtitle = moviesSubtitle,
+                            seriesEnabled = seriesEnabled,
+                            seriesSubtitle = seriesSubtitle,
                             accountSummary = accountSummary,
                             onOpenLiveTv = { mobileScreen = MobileScreen.LIVE_TV },
                             onOpenMovies = openMoviesFromHome,
+                            onOpenSeries = openSeriesFromHome,
                             onOpenAccount = { mobileScreen = MobileScreen.ACCOUNT },
                             onOpenPlaylist = { mobileScreen = MobileScreen.PLAYLISTS },
                         )
@@ -982,6 +1293,20 @@ fun PayDaIptvApp() {
                             onMovieSelected = ::openMovie,
                             onBack = { mobileScreen = MobileScreen.HOME },
                         )
+                        MobileScreen.SERIES -> SeriesCatalogScreen(
+                            series = seriesCatalog,
+                            categories = seriesCategories,
+                            favoriteIds = favoriteChannelIds,
+                            selectedCategoryId = selectedSeriesCategoryId,
+                            searchQuery = seriesSearchQuery,
+                            isTv = false,
+                            errorMessage = seriesErrorMessage,
+                            continuingProgress = emptyList(),
+                            onCategorySelected = { selectedSeriesCategoryId = it },
+                            onSearchQueryChange = { seriesSearchQuery = it },
+                            onSeriesSelected = ::openSeries,
+                            onBack = { mobileScreen = MobileScreen.HOME },
+                        )
                         MobileScreen.LIVE_TV -> {
                             BackHandler {
                                 mobileScreen = MobileScreen.HOME
@@ -1026,6 +1351,7 @@ private enum class TvScreen {
     HOME,
     LIVE_TV,
     MOVIES,
+    SERIES,
     ACCOUNT,
     PLAYLISTS,
     CONFIG,
@@ -1035,6 +1361,7 @@ private enum class MobileScreen {
     HOME,
     LIVE_TV,
     MOVIES,
+    SERIES,
     ACCOUNT,
     PLAYLISTS,
     CONFIG,

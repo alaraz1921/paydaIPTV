@@ -29,9 +29,12 @@ fun MobileHomeScreen(
     channelCount: Int,
     moviesEnabled: Boolean,
     moviesSubtitle: String,
+    seriesEnabled: Boolean,
+    seriesSubtitle: String,
     accountSummary: String?,
     onOpenLiveTv: () -> Unit,
     onOpenMovies: () -> Unit,
+    onOpenSeries: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
@@ -78,9 +81,9 @@ fun MobileHomeScreen(
             )
             MobileHomeCard(
                 title = "SERIES",
-                subtitle = "Proximamente",
-                enabled = false,
-                onClick = {},
+                subtitle = seriesSubtitle,
+                enabled = seriesEnabled,
+                onClick = onOpenSeries,
                 modifier = Modifier
                     .weight(1f)
                     .height(116.dp),
