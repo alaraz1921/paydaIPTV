@@ -18,8 +18,11 @@ import com.payda.iptv.data.Movie
 import com.payda.iptv.data.MovieCategory
 import com.payda.iptv.data.MovieProgress
 import com.payda.iptv.data.NetworkConnectivity
+import com.payda.iptv.data.PlaylistConfig
+import com.payda.iptv.data.PlaylistConfigStatus
 import com.payda.iptv.data.PlaylistSourceType
 import com.payda.iptv.data.XtreamConfig
+import com.payda.iptv.data.XtreamAccountInfo
 import com.payda.iptv.data.XtreamRepository
 import com.payda.iptv.data.isUsableEpgUrl
 import com.payda.iptv.data.normalizeXtreamServer
@@ -51,6 +54,11 @@ fun PayDaIptvApp() {
     val settingsRepository = remember { SettingsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
     val favoriteChannelIds by settingsRepository.favoriteChannelIds.collectAsState(initial = emptySet())
+    val playlistConfigs by settingsRepository.playlistConfigs.collectAsState(initial = emptyList())
+    var currentPlaylistConfigId by remember { mutableStateOf<String?>(null) }
+    var playlistName by remember { mutableStateOf("") }
+    var editingPlaylistConfig by remember { mutableStateOf<PlaylistConfig?>(null) }
+    var showPlaylistConfigEditor by remember { mutableStateOf(false) }
     var playlistUrl by remember { mutableStateOf("") }
     var sourceType by remember { mutableStateOf(PlaylistSourceType.M3U) }
     var epgUrl by remember { mutableStateOf("") }
@@ -60,6 +68,7 @@ fun PayDaIptvApp() {
     var manualEpgUrlConfigured by remember { mutableStateOf(false) }
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
+    var xtreamAccountInfo by remember { mutableStateOf<XtreamAccountInfo?>(null) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
     var movies by remember { mutableStateOf<List<Movie>>(emptyList()) }
     var movieCategories by remember { mutableStateOf<List<MovieCategory>>(emptyList()) }
@@ -127,6 +136,7 @@ fun PayDaIptvApp() {
     fun clearLoadedContent() {
         channels = emptyList()
         epgData = null
+        xtreamAccountInfo = null
         selectedChannel = null
         movies = emptyList()
         movieCategories = emptyList()
@@ -144,6 +154,47 @@ fun PayDaIptvApp() {
         lastSelectedChannelId = null
         selectedCategory = AllCategoryName
         searchQuery = ""
+        errorMessage = null
+        epgMessage = null
+    }
+
+    fun defaultConfigName(type: PlaylistSourceType, value: String): String {
+        val host = runCatching { java.net.URL(value).host }.getOrNull()
+        return playlistName.trim().ifBlank {
+            host?.takeIf { it.isNotBlank() } ?: if (type == PlaylistSourceType.XTREAM) "Xtream 1" else "Playlist 1"
+        }
+    }
+
+    fun draftPlaylistConfig(status: PlaylistConfigStatus = PlaylistConfigStatus.UNKNOWN): PlaylistConfig {
+        val now = System.currentTimeMillis()
+        val id = editingPlaylistConfig?.id ?: currentPlaylistConfigId ?: "playlist-$now"
+        return PlaylistConfig(
+            id = id,
+            displayName = defaultConfigName(sourceType, if (sourceType == PlaylistSourceType.XTREAM) xtreamServer else playlistUrl),
+            sourceType = sourceType,
+            playlistUrl = playlistUrl.trim(),
+            server = xtreamServer.trim(),
+            username = xtreamUsername.trim(),
+            password = xtreamPassword,
+            epgUrl = epgUrl.trim(),
+            isActive = true,
+            createdAtEpochMillis = editingPlaylistConfig?.createdAtEpochMillis ?: now,
+            lastUsedAtEpochMillis = now,
+            status = status,
+        )
+    }
+
+    fun applyPlaylistConfigToForm(config: PlaylistConfig) {
+        editingPlaylistConfig = config
+        currentPlaylistConfigId = config.id
+        playlistName = config.displayName
+        sourceType = config.sourceType
+        playlistUrl = config.playlistUrl
+        epgUrl = config.epgUrl
+        manualEpgUrlConfigured = config.epgUrl.isNotBlank()
+        xtreamServer = config.server
+        xtreamUsername = config.username
+        xtreamPassword = config.password
         errorMessage = null
         epgMessage = null
     }
@@ -199,7 +250,7 @@ fun PayDaIptvApp() {
         }
     }
 
-    fun loadPlaylist(requestedUrl: String, message: String? = null) {
+    fun loadPlaylist(requestedUrl: String, message: String? = null, saveConfig: Boolean = true) {
         coroutineScope.launch {
             isLoading = true
             loadingMessage = message
@@ -219,6 +270,7 @@ fun PayDaIptvApp() {
                     } else {
                         playlistUrl = requestedUrl
                         channels = loadedChannels
+                        xtreamAccountInfo = null
                         movies = emptyList()
                         movieCategories = emptyList()
                         selectedMovie = null
@@ -227,6 +279,7 @@ fun PayDaIptvApp() {
                         movieErrorMessage = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
+                        showPlaylistConfigEditor = false
                         tvPreviewChannel = null
                         tvPreviewChannels = emptyList()
                         selectedCategory = AllCategoryName
@@ -234,6 +287,13 @@ fun PayDaIptvApp() {
                         sourceType = PlaylistSourceType.M3U
                         settingsRepository.savePlaylistSourceType(PlaylistSourceType.M3U)
                         settingsRepository.saveLastPlaylistUrl(requestedUrl)
+                        if (saveConfig) {
+                            val savedConfig = draftPlaylistConfig(PlaylistConfigStatus.AVAILABLE)
+                            currentPlaylistConfigId = savedConfig.id
+                            playlistName = savedConfig.displayName
+                            editingPlaylistConfig = savedConfig
+                            settingsRepository.upsertPlaylistConfig(savedConfig, makeActive = true)
+                        }
 
                         val epgResolution = resolveEpgUrl(
                             manualUrl = epgUrl,
@@ -267,7 +327,7 @@ fun PayDaIptvApp() {
         }
     }
 
-    fun loadXtream(config: XtreamConfig, message: String? = null) {
+    fun loadXtream(config: XtreamConfig, message: String? = null, saveConfig: Boolean = true) {
         coroutineScope.launch {
             isLoading = true
             loadingMessage = message
@@ -298,6 +358,7 @@ fun PayDaIptvApp() {
                         xtreamUsername = normalizedConfig.username
                         xtreamPassword = normalizedConfig.password
                         channels = liveData.channels
+                        xtreamAccountInfo = liveData.accountInfo
                         movies = emptyList()
                         movieCategories = emptyList()
                         selectedMovie = null
@@ -307,12 +368,26 @@ fun PayDaIptvApp() {
                         epgData = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
+                        showPlaylistConfigEditor = false
                         tvPreviewChannel = null
                         tvPreviewChannels = emptyList()
                         selectedCategory = AllCategoryName
                         searchQuery = ""
                         settingsRepository.savePlaylistSourceType(PlaylistSourceType.XTREAM)
                         settingsRepository.saveXtreamConfig(normalizedConfig)
+                        if (saveConfig) {
+                            val savedConfig = draftPlaylistConfig(
+                                if (liveData.accountInfo?.status.equals("Expired", ignoreCase = true)) {
+                                    PlaylistConfigStatus.EXPIRED
+                                } else {
+                                    PlaylistConfigStatus.ACTIVE
+                                },
+                            ).copy(server = normalizedConfig.server)
+                            currentPlaylistConfigId = savedConfig.id
+                            playlistName = savedConfig.displayName
+                            editingPlaylistConfig = savedConfig
+                            settingsRepository.upsertPlaylistConfig(savedConfig, makeActive = true)
+                        }
                         epgMessage = null
                     }
                 }
@@ -427,6 +502,21 @@ fun PayDaIptvApp() {
     }
 
     LaunchedEffect(Unit) {
+        settingsRepository.migrateLegacyConfigIfNeeded()
+        val activeConfig = settingsRepository.getActivePlaylistConfig()
+        if (activeConfig != null) {
+            applyPlaylistConfigToForm(activeConfig)
+            if (activeConfig.sourceType == PlaylistSourceType.XTREAM) {
+                loadXtream(
+                    XtreamConfig(activeConfig.server, activeConfig.username, activeConfig.password),
+                    "Conectando con Xtream...",
+                    saveConfig = false,
+                )
+            } else if (activeConfig.playlistUrl.isNotBlank()) {
+                loadPlaylist(activeConfig.playlistUrl, "Cargando ultima lista...", saveConfig = false)
+            }
+            return@LaunchedEffect
+        }
         val savedSourceType = settingsRepository.getPlaylistSourceType()
         val savedUrl = settingsRepository.getLastPlaylistUrl()
         val savedEpgUrl = settingsRepository.getLastEpgUrl()
@@ -537,6 +627,9 @@ fun PayDaIptvApp() {
                 } else {
                     "Disponible con Xtream"
                 }
+                val accountSummary = xtreamAccountInfo?.expiresAtEpochSeconds
+                    ?.let(::formatXtreamDate)
+                    ?.let { "Cuenta activa · Expira: $it" }
                 val openMoviesFromHome: () -> Unit = {
                     if (movies.isEmpty()) {
                         loadMovies()
@@ -576,6 +669,62 @@ fun PayDaIptvApp() {
                         }
                     }
                 }
+                val openAddPlaylist: () -> Unit = {
+                    editingPlaylistConfig = null
+                    currentPlaylistConfigId = null
+                    playlistName = ""
+                    playlistUrl = ""
+                    epgUrl = ""
+                    xtreamServer = ""
+                    xtreamUsername = ""
+                    xtreamPassword = ""
+                    sourceType = PlaylistSourceType.M3U
+                    showPlaylistConfigEditor = true
+                    tvScreen = TvScreen.CONFIG
+                    mobileScreen = MobileScreen.CONFIG
+                }
+                val openEditPlaylist: (PlaylistConfig) -> Unit = { config ->
+                    applyPlaylistConfigToForm(config)
+                    showPlaylistConfigEditor = true
+                    tvScreen = TvScreen.CONFIG
+                    mobileScreen = MobileScreen.CONFIG
+                }
+                val activatePlaylist: (PlaylistConfig) -> Unit = { config ->
+                    coroutineScope.launch {
+                        settingsRepository.activatePlaylistConfig(config.id)
+                        applyPlaylistConfigToForm(config)
+                        clearLoadedContent()
+                        applyPlaylistConfigToForm(config.copy(isActive = true))
+                        if (config.sourceType == PlaylistSourceType.XTREAM) {
+                            loadXtream(XtreamConfig(config.server, config.username, config.password), "Conectando con Xtream...", saveConfig = false)
+                        } else {
+                            loadPlaylist(config.playlistUrl, "Cargando lista...", saveConfig = false)
+                        }
+                    }
+                }
+                val deletePlaylist: (PlaylistConfig) -> Unit = { config ->
+                    coroutineScope.launch {
+                        val nextConfig = settingsRepository.deletePlaylistConfig(config.id)
+                        if (config.isActive) {
+                            clearLoadedContent()
+                            if (nextConfig != null) {
+                                applyPlaylistConfigToForm(nextConfig)
+                                if (nextConfig.sourceType == PlaylistSourceType.XTREAM) {
+                                    loadXtream(
+                                        XtreamConfig(nextConfig.server, nextConfig.username, nextConfig.password),
+                                        "Conectando con Xtream...",
+                                        saveConfig = false,
+                                    )
+                                } else {
+                                    loadPlaylist(nextConfig.playlistUrl, "Cargando lista...", saveConfig = false)
+                                }
+                            } else {
+                                tvScreen = TvScreen.CONFIG
+                                mobileScreen = MobileScreen.CONFIG
+                            }
+                        }
+                    }
+                }
 
                 if (deviceType == DeviceType.TV) {
                     val previewChannel = tvPreviewChannel
@@ -608,6 +757,21 @@ fun PayDaIptvApp() {
                             onMovieSelected = ::openMovie,
                             onBack = { tvScreen = TvScreen.HOME },
                         )
+                        tvScreen == TvScreen.ACCOUNT -> AccountScreen(
+                            sourceType = sourceType,
+                            accountInfo = xtreamAccountInfo,
+                            isTv = true,
+                            onBack = { tvScreen = TvScreen.HOME },
+                        )
+                        tvScreen == TvScreen.PLAYLISTS -> PlaylistManagerScreen(
+                            configs = playlistConfigs,
+                            isTv = true,
+                            onAdd = openAddPlaylist,
+                            onEdit = openEditPlaylist,
+                            onActivate = activatePlaylist,
+                            onDelete = deletePlaylist,
+                            onBack = { tvScreen = TvScreen.HOME },
+                        )
                         previewChannel != null -> TvChannelPreviewScreen(
                             initialChannel = previewChannel,
                             categoryChannels = tvPreviewChannels.ifEmpty { channels },
@@ -625,18 +789,22 @@ fun PayDaIptvApp() {
                             channelCount = channels.size,
                             moviesEnabled = moviesEnabled,
                             moviesSubtitle = moviesSubtitle,
+                            accountSummary = accountSummary,
                             onOpenLiveTv = { tvScreen = TvScreen.LIVE_TV },
                             onOpenMovies = openMoviesFromHome,
-                            onChangePlaylist = { tvScreen = TvScreen.CONFIG },
+                            onOpenAccount = { tvScreen = TvScreen.ACCOUNT },
+                            onChangePlaylist = { tvScreen = TvScreen.PLAYLISTS },
                             onOpenSettings = { tvScreen = TvScreen.CONFIG },
                         )
                         tvScreen == TvScreen.CONFIG -> PlaylistScreen(
+                            playlistName = playlistName,
                             sourceType = sourceType,
                             playlistUrl = playlistUrl,
                             epgUrl = epgUrl,
                             xtreamServer = xtreamServer,
                             xtreamUsername = xtreamUsername,
                             xtreamPassword = xtreamPassword,
+                            onPlaylistNameChange = { playlistName = it },
                             onSourceTypeChange = ::changeSourceType,
                             onPlaylistUrlChange = {
                                 playlistUrl = it
@@ -674,7 +842,16 @@ fun PayDaIptvApp() {
                             testXtreamOption = testXtreamOption,
                             onLoadPlaylist = ::submitConfiguredSource,
                             isTvStyle = true,
-                            onBack = { tvScreen = TvScreen.HOME },
+                            showPlaylistName = showPlaylistConfigEditor,
+                            submitButtonText = if (showPlaylistConfigEditor) "Guardar y cargar" else null,
+                            onBack = {
+                                if (showPlaylistConfigEditor) {
+                                    showPlaylistConfigEditor = false
+                                    tvScreen = TvScreen.PLAYLISTS
+                                } else {
+                                    tvScreen = TvScreen.HOME
+                                }
+                            },
                         )
                         else -> TvChannelListScreen(
                             channels = channels,
@@ -719,18 +896,22 @@ fun PayDaIptvApp() {
                             channelCount = channels.size,
                             moviesEnabled = moviesEnabled,
                             moviesSubtitle = moviesSubtitle,
+                            accountSummary = accountSummary,
                             onOpenLiveTv = { mobileScreen = MobileScreen.LIVE_TV },
                             onOpenMovies = openMoviesFromHome,
-                            onOpenPlaylist = { mobileScreen = MobileScreen.CONFIG },
+                            onOpenAccount = { mobileScreen = MobileScreen.ACCOUNT },
+                            onOpenPlaylist = { mobileScreen = MobileScreen.PLAYLISTS },
                             onOpenSettings = { mobileScreen = MobileScreen.CONFIG },
                         )
                         MobileScreen.CONFIG -> PlaylistScreen(
+                            playlistName = playlistName,
                             sourceType = sourceType,
                             playlistUrl = playlistUrl,
                             epgUrl = epgUrl,
                             xtreamServer = xtreamServer,
                             xtreamUsername = xtreamUsername,
                             xtreamPassword = xtreamPassword,
+                            onPlaylistNameChange = { playlistName = it },
                             onSourceTypeChange = ::changeSourceType,
                             onPlaylistUrlChange = {
                                 playlistUrl = it
@@ -767,6 +948,30 @@ fun PayDaIptvApp() {
                             testEpgOption = testEpgOption,
                             testXtreamOption = testXtreamOption,
                             onLoadPlaylist = ::submitConfiguredSource,
+                            showPlaylistName = showPlaylistConfigEditor,
+                            submitButtonText = if (showPlaylistConfigEditor) "Guardar y cargar" else null,
+                            onBack = {
+                                if (showPlaylistConfigEditor) {
+                                    showPlaylistConfigEditor = false
+                                    mobileScreen = MobileScreen.PLAYLISTS
+                                } else {
+                                    mobileScreen = MobileScreen.HOME
+                                }
+                            },
+                        )
+                        MobileScreen.ACCOUNT -> AccountScreen(
+                            sourceType = sourceType,
+                            accountInfo = xtreamAccountInfo,
+                            isTv = false,
+                            onBack = { mobileScreen = MobileScreen.HOME },
+                        )
+                        MobileScreen.PLAYLISTS -> PlaylistManagerScreen(
+                            configs = playlistConfigs,
+                            isTv = false,
+                            onAdd = openAddPlaylist,
+                            onEdit = openEditPlaylist,
+                            onActivate = activatePlaylist,
+                            onDelete = deletePlaylist,
                             onBack = { mobileScreen = MobileScreen.HOME },
                         )
                         MobileScreen.MOVIES -> MovieCatalogScreen(
@@ -826,6 +1031,8 @@ private enum class TvScreen {
     HOME,
     LIVE_TV,
     MOVIES,
+    ACCOUNT,
+    PLAYLISTS,
     CONFIG,
 }
 
@@ -833,6 +1040,8 @@ private enum class MobileScreen {
     HOME,
     LIVE_TV,
     MOVIES,
+    ACCOUNT,
+    PLAYLISTS,
     CONFIG,
 }
 

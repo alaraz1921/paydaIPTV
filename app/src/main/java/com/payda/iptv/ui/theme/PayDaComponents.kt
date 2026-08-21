@@ -18,9 +18,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -64,30 +68,56 @@ fun PayDaCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    var hasFocus by remember { mutableStateOf(false) }
     Surface(
         modifier = if (onClick != null) {
-            modifier.clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
+            modifier
+                .graphicsLayer {
+                    val scale = if (hasFocus && enabled) 1.025f else 1f
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .onFocusChanged { hasFocus = it.hasFocus }
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
         } else {
             modifier
         },
         shape = RoundedCornerShape(8.dp),
         color = when {
-            !enabled -> PayDaSurface
+            !enabled -> PayDaSurface.copy(alpha = 0.72f)
             isPressed -> PayDaSurfacePressed
+            hasFocus -> PayDaSurfaceFocused
             else -> PayDaSurface
         },
-        border = BorderStroke(1.dp, PayDaBorder),
+        border = BorderStroke(if (hasFocus) 3.dp else 1.dp, if (hasFocus) Color.White else PayDaBorder),
     ) {
         Box(
             modifier = Modifier.padding(contentPadding),
             content = content,
         )
     }
+}
+
+@Composable
+fun PayDaFocusableCard(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    content: @Composable BoxScope.() -> Unit,
+) {
+    PayDaCard(
+        modifier = modifier,
+        onClick = onClick,
+        enabled = enabled,
+        contentPadding = contentPadding,
+        content = content,
+    )
 }
 
 @Composable

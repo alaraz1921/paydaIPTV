@@ -1,6 +1,7 @@
 package com.payda.iptv.ui.playlist
 
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.BorderStroke
@@ -47,11 +48,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.payda.iptv.BuildConfig
 import com.payda.iptv.data.Movie
 import com.payda.iptv.data.MovieCategory
 import com.payda.iptv.data.MovieProgress
@@ -324,7 +331,21 @@ fun MoviePlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val player = remember(movie.streamUrl) {
-        ExoPlayer.Builder(context).build().apply {
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                30_000,
+                90_000,
+                2_500,
+                5_000,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
+            .build()
+            .apply {
             setMediaItem(buildMediaItem(movie.streamUrl))
             playWhenReady = true
             prepare()
@@ -354,6 +375,40 @@ fun MoviePlayerScreen(
     BackHandler { persistProgressAndBack() }
 
     DisposableEffect(lifecycleOwner, player) {
+        var videoDecoder = "Desconocido"
+        var audioDecoder = "Desconocido"
+        var droppedFrames = 0
+        var rebuffers = 0
+        val analyticsListener = object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                videoDecoder = decoderName
+                logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
+            }
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                audioDecoder = decoderName
+                logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
+            }
+
+            override fun onDroppedVideoFrames(
+                eventTime: AnalyticsListener.EventTime,
+                droppedFramesCount: Int,
+                elapsedMs: Long,
+            ) {
+                droppedFrames += droppedFramesCount
+                logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
+            }
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.play()
@@ -364,16 +419,26 @@ fun MoviePlayerScreen(
             }
         }
         val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_BUFFERING && player.playWhenReady) {
+                    rebuffers += 1
+                    logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     onSaveProgress(null)
                 }
             }
         }
         player.addListener(listener)
+        player.addAnalyticsListener(analyticsListener)
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            player.removeAnalyticsListener(analyticsListener)
             player.removeListener(listener)
             player.release()
         }
@@ -398,6 +463,46 @@ fun MoviePlayerScreen(
         )
     }
 }
+
+private fun logMovieDiagnostics(
+    movie: Movie,
+    player: ExoPlayer,
+    videoDecoder: String,
+    audioDecoder: String,
+    droppedFrames: Int,
+    rebuffers: Int,
+) {
+    if (!BuildConfig.DEBUG) return
+    val videoFormat = player.currentTracks.groups
+        .firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+        ?.getTrackFormat(0)
+    val audioFormat = player.currentTracks.groups
+        .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+        ?.getTrackFormat(0)
+    val resolution = if (videoFormat != null && videoFormat.width > 0 && videoFormat.height > 0) {
+        "${videoFormat.width}x${videoFormat.height}"
+    } else {
+        "Desconocida"
+    }
+    val fps = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "%.2f".format(it) } ?: "Desconocido"
+    val bitrate = videoFormat?.bitrate?.takeIf { it > 0 }?.toString() ?: "Desconocido"
+    Log.d(
+        MovieDiagnosticsTag,
+        "Movie playback diagnostics: title=${movie.name.take(60)}, " +
+            "Resolution=$resolution, " +
+            "Video codec=${videoFormat?.sampleMimeType ?: "Desconocido"}, " +
+            "Audio codec=${audioFormat?.sampleMimeType ?: "Desconocido"}, " +
+            "FPS=$fps, " +
+            "Bitrate=$bitrate, " +
+            "Video decoder=$videoDecoder, " +
+            "Audio decoder=$audioDecoder, " +
+            "Dropped frames=$droppedFrames, " +
+            "Rebuffers=$rebuffers, " +
+            "Buffered=${player.bufferedPercentage}%",
+    )
+}
+
+private const val MovieDiagnosticsTag = "PayDaMoviePlayback"
 
 @Composable
 private fun MoviePoster(

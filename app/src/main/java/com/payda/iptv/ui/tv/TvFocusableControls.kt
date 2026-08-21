@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,11 @@ fun TvFocusableSurface(
     val isPressed by interactionSource.collectIsPressedAsState()
     Surface(
         modifier = modifier
+            .graphicsLayer {
+                val scale = if (hasFocus && enabled) 1.03f else 1f
+                scaleX = scale
+                scaleY = scale
+            }
             .onFocusChanged { hasFocus = it.hasFocus }
             .clickable(
                 enabled = enabled,

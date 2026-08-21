@@ -12,10 +12,14 @@ data class XtreamCategory(
 )
 
 data class XtreamAccountInfo(
+    val username: String? = null,
     val status: String?,
     val expiresAtEpochSeconds: Long?,
+    val createdAtEpochSeconds: Long? = null,
+    val isTrial: Boolean? = null,
     val maxConnections: Int?,
     val activeConnections: Int?,
+    val server: String? = null,
 )
 
 data class XtreamLiveData(

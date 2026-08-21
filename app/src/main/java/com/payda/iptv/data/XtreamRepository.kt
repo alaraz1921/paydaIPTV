@@ -92,10 +92,20 @@ class XtreamRepository {
         }
 
         return XtreamAccountInfo(
+            username = userInfo.optFlexibleString("username"),
             status = status.takeIf { it.isNotBlank() },
             expiresAtEpochSeconds = expiresAt,
+            createdAtEpochSeconds = userInfo.optFlexibleLong("created_at"),
+            isTrial = userInfo.optFlexibleString("is_trial")?.let { it == "1" || it.equals("true", ignoreCase = true) },
             maxConnections = userInfo.optFlexibleInt("max_connections"),
             activeConnections = userInfo.optFlexibleInt("active_cons"),
+            server = root.optJSONObject("server_info")?.optFlexibleString("url")
+                ?: root.optJSONObject("server_info")?.optFlexibleString("server_protocol")
+                    ?.let { protocol ->
+                        val host = root.optJSONObject("server_info")?.optFlexibleString("url")
+                        val port = root.optJSONObject("server_info")?.optFlexibleString("port")
+                        if (host.isNullOrBlank()) null else "$protocol://$host${port?.let { ":$it" }.orEmpty()}"
+                    },
         )
     }
 

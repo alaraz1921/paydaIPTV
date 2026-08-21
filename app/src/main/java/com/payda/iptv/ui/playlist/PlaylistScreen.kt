@@ -47,12 +47,14 @@ import com.payda.iptv.ui.theme.PayDaTextSecondary
 
 @Composable
 fun PlaylistScreen(
+    playlistName: String = "",
     sourceType: PlaylistSourceType,
     playlistUrl: String,
     epgUrl: String,
     xtreamServer: String,
     xtreamUsername: String,
     xtreamPassword: String,
+    onPlaylistNameChange: (String) -> Unit = {},
     onSourceTypeChange: (PlaylistSourceType) -> Unit,
     onPlaylistUrlChange: (String) -> Unit,
     onEpgUrlChange: (String) -> Unit,
@@ -68,6 +70,8 @@ fun PlaylistScreen(
     onLoadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
     isTvStyle: Boolean = false,
+    showPlaylistName: Boolean = false,
+    submitButtonText: String? = null,
     onBack: (() -> Unit)? = null,
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -77,12 +81,13 @@ fun PlaylistScreen(
     val epgFocusRequester = remember { FocusRequester() }
     val xtreamServerFocusRequester = remember { FocusRequester() }
     var clipboardMessage by remember { mutableStateOf<String?>(null) }
+    var nameFieldHasFocus by remember { mutableStateOf(false) }
     var playlistFieldHasFocus by remember { mutableStateOf(false) }
     var epgFieldHasFocus by remember { mutableStateOf(false) }
     var xtreamFieldHasFocus by remember { mutableStateOf(false) }
     val textFieldColors = PayDaTextFieldColors()
     BackHandler(enabled = onBack != null) {
-        if (playlistFieldHasFocus || epgFieldHasFocus || xtreamFieldHasFocus) {
+        if (nameFieldHasFocus || playlistFieldHasFocus || epgFieldHasFocus || xtreamFieldHasFocus) {
             keyboardController?.hide()
             focusManager.clearFocus()
         } else {
@@ -105,6 +110,20 @@ fun PlaylistScreen(
             style = MaterialTheme.typography.headlineMedium,
         )
         Spacer(modifier = Modifier.height(24.dp))
+        if (showPlaylistName) {
+            OutlinedTextField(
+                value = playlistName,
+                onValueChange = onPlaylistNameChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { nameFieldHasFocus = it.hasFocus },
+                label = { Text("Nombre") },
+                singleLine = true,
+                enabled = !isLoading,
+                colors = textFieldColors,
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+        }
         Text(
             text = "Tipo de fuente",
             color = PayDaTextSecondary,
@@ -315,14 +334,14 @@ fun PlaylistScreen(
         }
         if (isTvStyle) {
             TvFocusableButton(
-                text = if (sourceType == PlaylistSourceType.M3U) "Cargar lista" else "Conectar",
+                text = submitButtonText ?: if (sourceType == PlaylistSourceType.M3U) "Cargar lista" else "Conectar",
                 onClick = onLoadPlaylist,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading && canLoad,
             )
         } else {
             PayDaButton(
-                text = if (sourceType == PlaylistSourceType.M3U) "Cargar lista" else "Conectar",
+                text = submitButtonText ?: if (sourceType == PlaylistSourceType.M3U) "Cargar lista" else "Conectar",
                 onClick = onLoadPlaylist,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading && canLoad,

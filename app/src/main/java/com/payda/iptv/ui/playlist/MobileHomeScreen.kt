@@ -29,8 +29,10 @@ fun MobileHomeScreen(
     channelCount: Int,
     moviesEnabled: Boolean,
     moviesSubtitle: String,
+    accountSummary: String?,
     onOpenLiveTv: () -> Unit,
     onOpenMovies: () -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenPlaylist: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -48,6 +50,14 @@ fun MobileHomeScreen(
             fontWeight = FontWeight.Bold,
         )
         Spacer(modifier = Modifier.height(28.dp))
+        if (!accountSummary.isNullOrBlank()) {
+            Text(
+                text = accountSummary,
+                color = PayDaTextSecondary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        }
         MobileHomeCard(
             title = "TV EN DIRECTO",
             subtitle = "$channelCount canales",
@@ -80,7 +90,12 @@ fun MobileHomeScreen(
         Spacer(modifier = Modifier.height(22.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PayDaButton(
-                text = "Playlist",
+                text = "Cuenta",
+                onClick = onOpenAccount,
+                modifier = Modifier.weight(1f),
+            )
+            PayDaButton(
+                text = "Playlists",
                 onClick = onOpenPlaylist,
                 modifier = Modifier.weight(1f),
             )

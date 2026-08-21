@@ -31,8 +31,10 @@ fun TvHomeScreen(
     channelCount: Int,
     moviesEnabled: Boolean,
     moviesSubtitle: String,
+    accountSummary: String?,
     onOpenLiveTv: () -> Unit,
     onOpenMovies: () -> Unit,
+    onOpenAccount: () -> Unit,
     onChangePlaylist: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -71,6 +73,14 @@ fun TvHomeScreen(
         }
 
         Spacer(modifier = Modifier.height(56.dp))
+        if (!accountSummary.isNullOrBlank()) {
+            Text(
+                text = accountSummary,
+                color = Color(0xFFCBD5E1),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -105,7 +115,12 @@ fun TvHomeScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             TvFocusableButton(
-                text = "Playlist",
+                text = "Cuenta",
+                onClick = onOpenAccount,
+                modifier = Modifier.width(180.dp),
+            )
+            TvFocusableButton(
+                text = "Playlists",
                 onClick = onChangePlaylist,
                 modifier = Modifier.width(180.dp),
             )
