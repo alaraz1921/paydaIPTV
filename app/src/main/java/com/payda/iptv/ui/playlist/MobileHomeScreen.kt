@@ -27,7 +27,10 @@ import com.payda.iptv.ui.theme.PayDaTextSecondary
 @Composable
 fun MobileHomeScreen(
     channelCount: Int,
+    moviesEnabled: Boolean,
+    moviesSubtitle: String,
     onOpenLiveTv: () -> Unit,
+    onOpenMovies: () -> Unit,
     onOpenPlaylist: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -57,9 +60,9 @@ fun MobileHomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             MobileHomeCard(
                 title = "PELICULAS",
-                subtitle = "Proximamente",
-                enabled = false,
-                onClick = {},
+                subtitle = moviesSubtitle,
+                enabled = moviesEnabled,
+                onClick = onOpenMovies,
                 modifier = Modifier
                     .weight(1f)
                     .height(116.dp),

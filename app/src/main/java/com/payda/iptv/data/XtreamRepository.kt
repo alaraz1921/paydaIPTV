@@ -31,6 +31,40 @@ class XtreamRepository {
         )
     }
 
+    suspend fun loadMovieCatalog(config: XtreamConfig): MovieCatalog = withContext(Dispatchers.IO) {
+        val normalizedConfig = config.copy(server = normalizeXtreamServer(config.server))
+        val categories = requestArray(normalizedConfig, "get_vod_categories")
+            .let(::parseMovieCategories)
+        val categoryNames = categories.associate { it.id to it.name }
+        val movies = requestArray(normalizedConfig, "get_vod_streams")
+            .let { parseVodStreams(normalizedConfig, categoryNames, it) }
+
+        MovieCatalog(
+            movies = movies,
+            categories = categories,
+        )
+    }
+
+    suspend fun loadMovieInfo(config: XtreamConfig, movie: Movie): Movie = withContext(Dispatchers.IO) {
+        val normalizedConfig = config.copy(server = normalizeXtreamServer(config.server))
+        val root = requestObject(normalizedConfig, "get_vod_info&vod_id=${urlEncode(movie.id)}")
+        val info = root.optJSONObject("info") ?: root
+        movie.copy(
+            plot = info.optString("plot").takeIf { it.isNotBlank() } ?: movie.plot,
+            cast = info.optString("cast").takeIf { it.isNotBlank() } ?: movie.cast,
+            director = info.optString("director").takeIf { it.isNotBlank() } ?: movie.director,
+            genre = info.optString("genre").takeIf { it.isNotBlank() } ?: movie.genre,
+            releaseDate = info.optString("releasedate").takeIf { it.isNotBlank() }
+                ?: info.optString("releaseDate").takeIf { it.isNotBlank() }
+                ?: movie.releaseDate,
+            duration = info.optString("duration").takeIf { it.isNotBlank() } ?: movie.duration,
+            rating = info.optFlexibleString("rating")?.takeIf { it.isNotBlank() } ?: movie.rating,
+            posterUrl = info.optString("movie_image").takeIf { it.isNotBlank() }
+                ?: info.optString("cover_big").takeIf { it.isNotBlank() }
+                ?: movie.posterUrl,
+        )
+    }
+
     private fun parseAndValidateAccount(root: JSONObject): XtreamAccountInfo {
         val userInfo = root.optJSONObject("user_info")
             ?: throw XtreamLoadException("Respuesta del servidor no valida.")
@@ -81,6 +115,22 @@ class XtreamRepository {
         }
     }
 
+    private fun parseMovieCategories(array: JSONArray): List<MovieCategory> {
+        return buildList {
+            for (index in 0 until array.length()) {
+                val category = array.optJSONObject(index) ?: continue
+                val id = category.optString("category_id").takeIf { it.isNotBlank() } ?: continue
+                add(
+                    MovieCategory(
+                        id = id,
+                        name = category.optString("category_name").takeIf { it.isNotBlank() }
+                            ?: "Categoria $id",
+                    ),
+                )
+            }
+        }
+    }
+
     private fun parseLiveStreams(
         config: XtreamConfig,
         categoryNames: Map<String, String>,
@@ -111,8 +161,43 @@ class XtreamRepository {
         }
     }
 
-    private fun requestObject(config: XtreamConfig): JSONObject {
-        val body = download(buildPlayerApiUrl(config))
+    private fun parseVodStreams(
+        config: XtreamConfig,
+        categoryNames: Map<String, String>,
+        array: JSONArray,
+    ): List<Movie> {
+        return buildList {
+            for (index in 0 until array.length()) {
+                val stream = array.optJSONObject(index) ?: continue
+                val streamId = stream.optFlexibleString("stream_id")?.takeIf { it.isNotBlank() } ?: continue
+                val name = stream.optString("name").takeIf { it.isNotBlank() } ?: "Pelicula $streamId"
+                val categoryId = stream.optFlexibleString("category_id")
+                val extension = stream.optString("container_extension")
+                    .takeIf { it.isNotBlank() }
+                    ?: "mp4"
+                val streamUrl = buildMovieStreamUrl(config, streamId, extension)
+                add(
+                    Movie(
+                        id = streamId,
+                        name = name,
+                        streamUrl = streamUrl,
+                        posterUrl = stream.optString("stream_icon").takeIf { it.isNotBlank() },
+                        categoryId = categoryId,
+                        categoryName = categoryId?.let { categoryNames[it] },
+                        containerExtension = extension,
+                        rating = stream.optFlexibleString("rating_5based")?.takeIf { it.isNotBlank() }
+                            ?: stream.optFlexibleString("rating")?.takeIf { it.isNotBlank() },
+                        year = stream.optFlexibleString("year")?.takeIf { it.isNotBlank() },
+                        plot = stream.optString("plot").takeIf { it.isNotBlank() },
+                        favoriteId = "xtream|movie|${config.server}|$streamId",
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun requestObject(config: XtreamConfig, action: String? = null): JSONObject {
+        val body = download(buildPlayerApiUrl(config, action))
         return try {
             JSONObject(body)
         } catch (error: JSONException) {
@@ -121,7 +206,7 @@ class XtreamRepository {
     }
 
     private fun requestArray(config: XtreamConfig, action: String): JSONArray {
-        val body = download("${buildPlayerApiUrl(config)}&action=$action")
+        val body = download(buildPlayerApiUrl(config, action))
         return try {
             JSONArray(body)
         } catch (error: JSONException) {
@@ -129,8 +214,9 @@ class XtreamRepository {
         }
     }
 
-    private fun buildPlayerApiUrl(config: XtreamConfig): String {
-        return "${config.server}/player_api.php?username=${urlEncode(config.username)}&password=${urlEncode(config.password)}"
+    private fun buildPlayerApiUrl(config: XtreamConfig, action: String? = null): String {
+        val base = "${config.server}/player_api.php?username=${urlEncode(config.username)}&password=${urlEncode(config.password)}"
+        return if (action.isNullOrBlank()) base else "$base&action=$action"
     }
 
     private fun buildLiveStreamUrl(
@@ -139,6 +225,14 @@ class XtreamRepository {
         extension: String,
     ): String {
         return "${config.server}/live/${urlEncode(config.username)}/${urlEncode(config.password)}/$streamId.$extension"
+    }
+
+    private fun buildMovieStreamUrl(
+        config: XtreamConfig,
+        streamId: String,
+        extension: String,
+    ): String {
+        return "${config.server}/movie/${urlEncode(config.username)}/${urlEncode(config.password)}/$streamId.$extension"
     }
 
     private fun download(requestUrl: String): String {

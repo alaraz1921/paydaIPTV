@@ -29,7 +29,10 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun TvHomeScreen(
     channelCount: Int,
+    moviesEnabled: Boolean,
+    moviesSubtitle: String,
     onOpenLiveTv: () -> Unit,
+    onOpenMovies: () -> Unit,
     onChangePlaylist: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -84,9 +87,9 @@ fun TvHomeScreen(
             )
             TvHomeCard(
                 title = "PELICULAS",
-                subtitle = "Proximamente",
-                enabled = false,
-                onClick = {},
+                subtitle = moviesSubtitle,
+                enabled = moviesEnabled,
+                onClick = onOpenMovies,
                 modifier = Modifier.weight(1f),
             )
             TvHomeCard(

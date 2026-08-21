@@ -14,6 +14,9 @@ import com.payda.iptv.BuildConfig
 import com.payda.iptv.data.Channel
 import com.payda.iptv.data.EpgUrlSource
 import com.payda.iptv.data.M3uRepository
+import com.payda.iptv.data.Movie
+import com.payda.iptv.data.MovieCategory
+import com.payda.iptv.data.MovieProgress
 import com.payda.iptv.data.NetworkConnectivity
 import com.payda.iptv.data.PlaylistSourceType
 import com.payda.iptv.data.XtreamConfig
@@ -58,6 +61,15 @@ fun PayDaIptvApp() {
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+    var movies by remember { mutableStateOf<List<Movie>>(emptyList()) }
+    var movieCategories by remember { mutableStateOf<List<MovieCategory>>(emptyList()) }
+    var selectedMovieCategoryId by remember { mutableStateOf(MovieAllCategory) }
+    var movieSearchQuery by remember { mutableStateOf("") }
+    var selectedMovie by remember { mutableStateOf<Movie?>(null) }
+    var playingMovie by remember { mutableStateOf<Movie?>(null) }
+    var movieProgress by remember { mutableStateOf<MovieProgress?>(null) }
+    var moviePlayerStartPosition by remember { mutableStateOf(0L) }
+    var movieErrorMessage by remember { mutableStateOf<String?>(null) }
     var tvScreen by remember { mutableStateOf(TvScreen.HOME) }
     var mobileScreen by remember { mutableStateOf(MobileScreen.HOME) }
     var tvPreviewChannel by remember { mutableStateOf<Channel?>(null) }
@@ -116,6 +128,15 @@ fun PayDaIptvApp() {
         channels = emptyList()
         epgData = null
         selectedChannel = null
+        movies = emptyList()
+        movieCategories = emptyList()
+        selectedMovieCategoryId = MovieAllCategory
+        movieSearchQuery = ""
+        selectedMovie = null
+        playingMovie = null
+        movieProgress = null
+        moviePlayerStartPosition = 0L
+        movieErrorMessage = null
         tvScreen = TvScreen.HOME
         mobileScreen = MobileScreen.HOME
         tvPreviewChannel = null
@@ -198,6 +219,12 @@ fun PayDaIptvApp() {
                     } else {
                         playlistUrl = requestedUrl
                         channels = loadedChannels
+                        movies = emptyList()
+                        movieCategories = emptyList()
+                        selectedMovie = null
+                        playingMovie = null
+                        movieProgress = null
+                        movieErrorMessage = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
                         tvPreviewChannel = null
@@ -271,6 +298,12 @@ fun PayDaIptvApp() {
                         xtreamUsername = normalizedConfig.username
                         xtreamPassword = normalizedConfig.password
                         channels = liveData.channels
+                        movies = emptyList()
+                        movieCategories = emptyList()
+                        selectedMovie = null
+                        playingMovie = null
+                        movieProgress = null
+                        movieErrorMessage = null
                         epgData = null
                         tvScreen = TvScreen.HOME
                         mobileScreen = MobileScreen.HOME
@@ -288,6 +321,86 @@ fun PayDaIptvApp() {
                 }
             loadingMessage = null
             isLoading = false
+        }
+    }
+
+    fun currentXtreamConfigOrNull(): XtreamConfig? {
+        val config = XtreamConfig(
+            server = xtreamServer.trim(),
+            username = xtreamUsername.trim(),
+            password = xtreamPassword,
+        )
+        if (config.server.isBlank() || config.username.isBlank() || config.password.isBlank()) {
+            return null
+        }
+        return runCatching { config.copy(server = normalizeXtreamServer(config.server)) }.getOrNull()
+    }
+
+    fun loadMovies(message: String? = "Cargando peliculas...") {
+        if (sourceType != PlaylistSourceType.XTREAM) {
+            movieErrorMessage = "Peliculas disponible con Xtream."
+            tvScreen = TvScreen.MOVIES
+            mobileScreen = MobileScreen.MOVIES
+            return
+        }
+        val config = currentXtreamConfigOrNull()
+        if (config == null) {
+            movieErrorMessage = "Configura Xtream para ver peliculas."
+            tvScreen = TvScreen.MOVIES
+            mobileScreen = MobileScreen.MOVIES
+            return
+        }
+        coroutineScope.launch {
+            isLoading = true
+            loadingMessage = message
+            movieErrorMessage = null
+            if (!networkConnectivity.hasInternetConnection()) {
+                movieErrorMessage = "Sin conexion a Internet"
+                tvScreen = TvScreen.MOVIES
+                mobileScreen = MobileScreen.MOVIES
+                loadingMessage = null
+                isLoading = false
+                return@launch
+            }
+            runCatching { xtreamRepository.loadMovieCatalog(config) }
+                .onSuccess { catalog ->
+                    movies = catalog.movies
+                    movieCategories = catalog.categories
+                    selectedMovieCategoryId = MovieAllCategory
+                    movieSearchQuery = ""
+                    selectedMovie = null
+                    playingMovie = null
+                    movieProgress = null
+                    movieErrorMessage = if (catalog.movies.isEmpty()) {
+                        "La fuente Xtream no contiene peliculas VOD validas."
+                    } else {
+                        null
+                    }
+                    tvScreen = TvScreen.MOVIES
+                    mobileScreen = MobileScreen.MOVIES
+                }
+                .onFailure { error ->
+                    movieErrorMessage = error.message ?: "No se pudo cargar peliculas Xtream."
+                    tvScreen = TvScreen.MOVIES
+                    mobileScreen = MobileScreen.MOVIES
+                }
+            loadingMessage = null
+            isLoading = false
+        }
+    }
+
+    fun openMovie(movie: Movie) {
+        selectedMovie = movie
+        movieProgress = null
+        coroutineScope.launch {
+            movieProgress = settingsRepository.getMovieProgress(movie.favoriteId)
+            val config = currentXtreamConfigOrNull()
+            if (config != null && networkConnectivity.hasInternetConnection()) {
+                runCatching { xtreamRepository.loadMovieInfo(config, movie) }
+                    .onSuccess { detailedMovie ->
+                        selectedMovie = detailedMovie
+                    }
+            }
         }
     }
 
@@ -400,6 +513,15 @@ fun PayDaIptvApp() {
                     channels = emptyList()
                     epgData = null
                     selectedChannel = null
+                    movies = emptyList()
+                    movieCategories = emptyList()
+                    selectedMovieCategoryId = MovieAllCategory
+                    movieSearchQuery = ""
+                    selectedMovie = null
+                    playingMovie = null
+                    movieProgress = null
+                    moviePlayerStartPosition = 0L
+                    movieErrorMessage = null
                     tvScreen = TvScreen.HOME
                     mobileScreen = MobileScreen.HOME
                     tvPreviewChannel = null
@@ -409,10 +531,83 @@ fun PayDaIptvApp() {
                     errorMessage = null
                     epgMessage = null
                 }
+                val moviesEnabled = sourceType == PlaylistSourceType.XTREAM
+                val moviesSubtitle = if (moviesEnabled) {
+                    if (movies.isEmpty()) "Catalogo VOD" else "${movies.size} peliculas"
+                } else {
+                    "Disponible con Xtream"
+                }
+                val openMoviesFromHome: () -> Unit = {
+                    if (movies.isEmpty()) {
+                        loadMovies()
+                    } else {
+                        selectedMovie = null
+                        playingMovie = null
+                        movieProgress = null
+                        tvScreen = TvScreen.MOVIES
+                        mobileScreen = MobileScreen.MOVIES
+                    }
+                }
+                val toggleMovieFavorite: (Movie) -> Unit = { movieToToggle ->
+                    coroutineScope.launch {
+                        settingsRepository.toggleFavorite(movieToToggle.favoriteId)
+                    }
+                }
+                val playMovie: (Movie, Boolean) -> Unit = { movieToPlay, resume ->
+                    playingMovie = movieToPlay
+                    moviePlayerStartPosition = if (resume) {
+                        movieProgress?.takeIf { it.shouldResume() }?.positionMillis ?: 0L
+                    } else {
+                        0L
+                    }
+                    if (!resume) {
+                        coroutineScope.launch {
+                            settingsRepository.clearMovieProgress(movieToPlay.favoriteId)
+                        }
+                    }
+                }
+                val saveMovieProgress: (MovieProgress?) -> Unit = { progress ->
+                    val movieId = playingMovie?.favoriteId
+                    coroutineScope.launch {
+                        if (progress != null) {
+                            settingsRepository.saveMovieProgress(progress)
+                        } else if (movieId != null) {
+                            settingsRepository.clearMovieProgress(movieId)
+                        }
+                    }
+                }
 
                 if (deviceType == DeviceType.TV) {
                     val previewChannel = tvPreviewChannel
                     when {
+                        playingMovie != null -> MoviePlayerScreen(
+                            movie = playingMovie!!,
+                            startPositionMillis = moviePlayerStartPosition,
+                            onSaveProgress = saveMovieProgress,
+                            onBack = { playingMovie = null },
+                        )
+                        selectedMovie != null -> MovieDetailScreen(
+                            movie = selectedMovie!!,
+                            progress = movieProgress,
+                            isFavorite = selectedMovie!!.favoriteId in favoriteChannelIds,
+                            isTv = true,
+                            onPlay = { resume -> playMovie(selectedMovie!!, resume) },
+                            onToggleFavorite = { toggleMovieFavorite(selectedMovie!!) },
+                            onBack = { selectedMovie = null },
+                        )
+                        tvScreen == TvScreen.MOVIES -> MovieCatalogScreen(
+                            movies = movies,
+                            categories = movieCategories,
+                            favoriteIds = favoriteChannelIds,
+                            selectedCategoryId = selectedMovieCategoryId,
+                            searchQuery = movieSearchQuery,
+                            isTv = true,
+                            errorMessage = movieErrorMessage,
+                            onCategorySelected = { selectedMovieCategoryId = it },
+                            onSearchQueryChange = { movieSearchQuery = it },
+                            onMovieSelected = ::openMovie,
+                            onBack = { tvScreen = TvScreen.HOME },
+                        )
                         previewChannel != null -> TvChannelPreviewScreen(
                             initialChannel = previewChannel,
                             categoryChannels = tvPreviewChannels.ifEmpty { channels },
@@ -428,7 +623,10 @@ fun PayDaIptvApp() {
                         )
                         tvScreen == TvScreen.HOME -> TvHomeScreen(
                             channelCount = channels.size,
+                            moviesEnabled = moviesEnabled,
+                            moviesSubtitle = moviesSubtitle,
                             onOpenLiveTv = { tvScreen = TvScreen.LIVE_TV },
+                            onOpenMovies = openMoviesFromHome,
                             onChangePlaylist = { tvScreen = TvScreen.CONFIG },
                             onOpenSettings = { tvScreen = TvScreen.CONFIG },
                         )
@@ -500,10 +698,29 @@ fun PayDaIptvApp() {
                         )
                     }
                 } else {
-                    when (mobileScreen) {
+                    when {
+                        playingMovie != null -> MoviePlayerScreen(
+                            movie = playingMovie!!,
+                            startPositionMillis = moviePlayerStartPosition,
+                            onSaveProgress = saveMovieProgress,
+                            onBack = { playingMovie = null },
+                        )
+                        selectedMovie != null -> MovieDetailScreen(
+                            movie = selectedMovie!!,
+                            progress = movieProgress,
+                            isFavorite = selectedMovie!!.favoriteId in favoriteChannelIds,
+                            isTv = false,
+                            onPlay = { resume -> playMovie(selectedMovie!!, resume) },
+                            onToggleFavorite = { toggleMovieFavorite(selectedMovie!!) },
+                            onBack = { selectedMovie = null },
+                        )
+                        else -> when (mobileScreen) {
                         MobileScreen.HOME -> MobileHomeScreen(
                             channelCount = channels.size,
+                            moviesEnabled = moviesEnabled,
+                            moviesSubtitle = moviesSubtitle,
                             onOpenLiveTv = { mobileScreen = MobileScreen.LIVE_TV },
+                            onOpenMovies = openMoviesFromHome,
                             onOpenPlaylist = { mobileScreen = MobileScreen.CONFIG },
                             onOpenSettings = { mobileScreen = MobileScreen.CONFIG },
                         )
@@ -552,6 +769,19 @@ fun PayDaIptvApp() {
                             onLoadPlaylist = ::submitConfiguredSource,
                             onBack = { mobileScreen = MobileScreen.HOME },
                         )
+                        MobileScreen.MOVIES -> MovieCatalogScreen(
+                            movies = movies,
+                            categories = movieCategories,
+                            favoriteIds = favoriteChannelIds,
+                            selectedCategoryId = selectedMovieCategoryId,
+                            searchQuery = movieSearchQuery,
+                            isTv = false,
+                            errorMessage = movieErrorMessage,
+                            onCategorySelected = { selectedMovieCategoryId = it },
+                            onSearchQueryChange = { movieSearchQuery = it },
+                            onMovieSelected = ::openMovie,
+                            onBack = { mobileScreen = MobileScreen.HOME },
+                        )
                         MobileScreen.LIVE_TV -> {
                             BackHandler {
                                 mobileScreen = MobileScreen.HOME
@@ -572,6 +802,7 @@ fun PayDaIptvApp() {
                                 onChannelSelected = sharedOnChannelSelected,
                                 onChangePlaylist = { mobileScreen = MobileScreen.CONFIG },
                             )
+                        }
                         }
                     }
                 }
@@ -594,12 +825,14 @@ fun PayDaIptvApp() {
 private enum class TvScreen {
     HOME,
     LIVE_TV,
+    MOVIES,
     CONFIG,
 }
 
 private enum class MobileScreen {
     HOME,
     LIVE_TV,
+    MOVIES,
     CONFIG,
 }
 
