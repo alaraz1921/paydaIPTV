@@ -36,7 +36,6 @@ fun TvHomeScreen(
     onOpenMovies: () -> Unit,
     onOpenAccount: () -> Unit,
     onChangePlaylist: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val liveFocusRequester = remember { FocusRequester() }
@@ -122,11 +121,6 @@ fun TvHomeScreen(
             TvFocusableButton(
                 text = "Playlists",
                 onClick = onChangePlaylist,
-                modifier = Modifier.width(180.dp),
-            )
-            TvFocusableButton(
-                text = "Configuracion",
-                onClick = onOpenSettings,
                 modifier = Modifier.width(180.dp),
             )
         }

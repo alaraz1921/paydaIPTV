@@ -15,12 +15,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,6 +50,7 @@ fun PlaylistManagerScreen(
     modifier: Modifier = Modifier,
 ) {
     var pendingDelete by remember { mutableStateOf<PlaylistConfig?>(null) }
+    val cancelDeleteFocusRequester = remember { FocusRequester() }
     BackHandler(onBack = onBack)
 
     Column(
@@ -84,7 +88,7 @@ fun PlaylistManagerScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Eliminar playlist") },
-            text = { Text("¿Eliminar esta playlist?") },
+            text = { Text("¿Eliminar \"${configToDelete.displayName}\"?") },
             confirmButton = {
                 PayDaButton(
                     text = "Eliminar",
@@ -95,9 +99,16 @@ fun PlaylistManagerScreen(
                 )
             },
             dismissButton = {
-                PayDaButton(text = "Cancelar", onClick = { pendingDelete = null })
+                PayDaButton(
+                    text = "Cancelar",
+                    onClick = { pendingDelete = null },
+                    modifier = Modifier.focusRequester(cancelDeleteFocusRequester),
+                )
             },
         )
+        LaunchedEffect(configToDelete.id) {
+            cancelDeleteFocusRequester.requestFocus()
+        }
     }
 }
 
@@ -110,7 +121,6 @@ private fun PlaylistConfigCard(
 ) {
     PayDaCard(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onActivate,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -145,6 +155,12 @@ private fun PlaylistConfigCard(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PayDaButton(
+                    text = if (config.isActive) "Activa" else "Activar",
+                    onClick = onActivate,
+                    modifier = Modifier.weight(1f),
+                    enabled = !config.isActive,
+                )
                 PayDaButton(text = "Editar", onClick = onEdit, modifier = Modifier.weight(1f))
                 PayDaButton(text = "Eliminar", onClick = onDelete, modifier = Modifier.weight(1f))
             }

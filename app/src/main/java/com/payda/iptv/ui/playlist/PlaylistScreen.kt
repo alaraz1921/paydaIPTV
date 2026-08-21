@@ -17,8 +17,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,11 +31,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.payda.iptv.data.PlaylistSourceType
 import com.payda.iptv.ui.tv.TvBackground
@@ -111,7 +119,7 @@ fun PlaylistScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
         if (showPlaylistName) {
-            OutlinedTextField(
+            PlaylistTextField(
                 value = playlistName,
                 onValueChange = onPlaylistNameChange,
                 modifier = Modifier
@@ -120,6 +128,7 @@ fun PlaylistScreen(
                 label = { Text("Nombre") },
                 singleLine = true,
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             Spacer(modifier = Modifier.height(18.dp))
@@ -147,7 +156,7 @@ fun PlaylistScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
         if (sourceType == PlaylistSourceType.M3U) {
-            OutlinedTextField(
+            PlaylistTextField(
                 value = playlistUrl,
                 onValueChange = onPlaylistUrlChange,
                 modifier = Modifier
@@ -158,6 +167,7 @@ fun PlaylistScreen(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -212,7 +222,7 @@ fun PlaylistScreen(
                 }
             }
             Spacer(modifier = Modifier.height(18.dp))
-            OutlinedTextField(
+            PlaylistTextField(
                 value = epgUrl,
                 onValueChange = onEpgUrlChange,
                 modifier = Modifier
@@ -223,6 +233,7 @@ fun PlaylistScreen(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -272,7 +283,7 @@ fun PlaylistScreen(
                 }
             }
         } else {
-            OutlinedTextField(
+            PlaylistTextField(
                 value = xtreamServer,
                 onValueChange = onXtreamServerChange,
                 modifier = Modifier
@@ -283,10 +294,11 @@ fun PlaylistScreen(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
+            PlaylistTextField(
                 value = xtreamUsername,
                 onValueChange = onXtreamUsernameChange,
                 modifier = Modifier
@@ -295,10 +307,11 @@ fun PlaylistScreen(
                 label = { Text("Usuario") },
                 singleLine = true,
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
+            PlaylistTextField(
                 value = xtreamPassword,
                 onValueChange = onXtreamPasswordChange,
                 modifier = Modifier
@@ -309,6 +322,7 @@ fun PlaylistScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 enabled = !isLoading,
+                isTvStyle = isTvStyle,
                 colors = textFieldColors,
             )
             if (testXtreamOption != null) {
@@ -398,6 +412,60 @@ private fun PlaylistActionButton(
             enabled = enabled,
         )
     }
+}
+
+@Composable
+private fun PlaylistTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    enabled: Boolean = true,
+    isTvStyle: Boolean,
+    colors: TextFieldColors,
+) {
+    var isEditing by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    BackHandler(enabled = isTvStyle && isEditing) {
+        isEditing = false
+        keyboardController?.hide()
+    }
+    LaunchedEffect(isTvStyle, isEditing) {
+        if (isTvStyle && isEditing) {
+            keyboardController?.show()
+        }
+    }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = if (isTvStyle) {
+            modifier.onPreviewKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter)
+                ) {
+                    isEditing = true
+                    true
+                } else {
+                    false
+                }
+            }
+        } else {
+            modifier
+        },
+        label = label,
+        singleLine = singleLine,
+        keyboardOptions = keyboardOptions,
+        visualTransformation = visualTransformation,
+        enabled = enabled,
+        readOnly = isTvStyle && !isEditing,
+        colors = colors,
+    )
 }
 
 data class TestPlaylistOption(

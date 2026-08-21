@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +60,8 @@ import com.payda.iptv.ui.playlist.FavoriteCategoryName
 import com.payda.iptv.ui.playlist.buildChannelCategories
 import com.payda.iptv.ui.playlist.filterChannels
 import com.payda.iptv.ui.playlist.loadChannelLogo
+import com.payda.iptv.ui.theme.PayDaTextField
+import com.payda.iptv.ui.theme.PayDaTextFieldColors
 import java.time.Instant
 
 @Composable
@@ -130,12 +131,14 @@ fun TvChannelListScreen(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
-            OutlinedTextField(
+            PayDaTextField(
                 value = categorySearchQuery,
                 onValueChange = onCategorySearchChange,
                 modifier = Modifier.weight(1f),
                 label = { Text("Buscar categoria") },
                 singleLine = true,
+                isTvStyle = true,
+                colors = PayDaTextFieldColors(),
                 trailingIcon = {
                     if (categorySearchQuery.isNotBlank()) {
                         TextButton(onClick = onClearCategorySearch) {

@@ -40,9 +40,6 @@ import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val SamplePlaylistUrl =
-    "https://gist.github.com/shaunlynneberg/707e95e03fe9e86e2ecde274dd54611e/raw/af290030e22a77ae2a55e5468a262364984078a0/TestIPTVPlaylist.m3u"
-
 @Composable
 fun PayDaIptvApp() {
     val context = LocalContext.current
@@ -794,7 +791,6 @@ fun PayDaIptvApp() {
                             onOpenMovies = openMoviesFromHome,
                             onOpenAccount = { tvScreen = TvScreen.ACCOUNT },
                             onChangePlaylist = { tvScreen = TvScreen.PLAYLISTS },
-                            onOpenSettings = { tvScreen = TvScreen.CONFIG },
                         )
                         tvScreen == TvScreen.CONFIG -> PlaylistScreen(
                             playlistName = playlistName,
@@ -901,7 +897,6 @@ fun PayDaIptvApp() {
                             onOpenMovies = openMoviesFromHome,
                             onOpenAccount = { mobileScreen = MobileScreen.ACCOUNT },
                             onOpenPlaylist = { mobileScreen = MobileScreen.PLAYLISTS },
-                            onOpenSettings = { mobileScreen = MobileScreen.CONFIG },
                         )
                         MobileScreen.CONFIG -> PlaylistScreen(
                             playlistName = playlistName,

@@ -34,7 +34,6 @@ fun MobileHomeScreen(
     onOpenMovies: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenPlaylist: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -97,11 +96,6 @@ fun MobileHomeScreen(
             PayDaButton(
                 text = "Playlists",
                 onClick = onOpenPlaylist,
-                modifier = Modifier.weight(1f),
-            )
-            PayDaButton(
-                text = "Configuracion",
-                onClick = onOpenSettings,
                 modifier = Modifier.weight(1f),
             )
         }

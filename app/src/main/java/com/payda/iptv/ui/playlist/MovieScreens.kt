@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -68,6 +67,7 @@ import com.payda.iptv.ui.theme.PayDaCard
 import com.payda.iptv.ui.theme.PayDaError
 import com.payda.iptv.ui.theme.PayDaPlaceholderLogo
 import com.payda.iptv.ui.theme.PayDaSurface
+import com.payda.iptv.ui.theme.PayDaTextField
 import com.payda.iptv.ui.theme.PayDaTextFieldColors
 import com.payda.iptv.ui.theme.PayDaTextPrimary
 import com.payda.iptv.ui.theme.PayDaTextSecondary
@@ -126,12 +126,13 @@ fun MovieCatalogScreen(
             fontWeight = FontWeight.Bold,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
+        PayDaTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Buscar pelicula") },
             singleLine = true,
+            isTvStyle = isTv,
             colors = PayDaTextFieldColors(),
         )
         if (!errorMessage.isNullOrBlank()) {
