@@ -188,7 +188,7 @@ fun PlayerScreen(
     }
 }
 
-private fun buildMediaItem(streamUrl: String): MediaItem {
+internal fun buildMediaItem(streamUrl: String): MediaItem {
     val builder = MediaItem.Builder().setUri(streamUrl)
     if (streamUrl.substringBefore("?").endsWith(".m3u8", ignoreCase = true)) {
         builder.setMimeType(MimeTypes.APPLICATION_M3U8)

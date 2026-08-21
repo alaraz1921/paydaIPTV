@@ -13,6 +13,7 @@ import com.payda.iptv.BuildConfig
 import com.payda.iptv.data.Channel
 import com.payda.iptv.data.EpgUrlSource
 import com.payda.iptv.data.M3uRepository
+import com.payda.iptv.data.NetworkConnectivity
 import com.payda.iptv.data.isUsableEpgUrl
 import com.payda.iptv.data.resolveEpgUrl
 import com.payda.iptv.data.stableFavoriteId
@@ -21,6 +22,8 @@ import com.payda.iptv.epg.EpgRepository
 import com.payda.iptv.settings.SettingsRepository
 import com.payda.iptv.ui.tv.DeviceType
 import com.payda.iptv.ui.tv.TvChannelListScreen
+import com.payda.iptv.ui.tv.TvChannelPreviewScreen
+import com.payda.iptv.ui.tv.TvHomeScreen
 import com.payda.iptv.ui.tv.rememberDeviceType
 import java.time.Instant
 import kotlinx.coroutines.delay
@@ -35,6 +38,7 @@ fun PayDaIptvApp() {
     val deviceType = rememberDeviceType()
     val repository = remember { M3uRepository() }
     val epgRepository = remember { EpgRepository() }
+    val networkConnectivity = remember { NetworkConnectivity(context) }
     val settingsRepository = remember { SettingsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
     val favoriteChannelIds by settingsRepository.favoriteChannelIds.collectAsState(initial = emptySet())
@@ -44,6 +48,9 @@ fun PayDaIptvApp() {
     var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+    var tvScreen by remember { mutableStateOf(TvScreen.HOME) }
+    var tvPreviewChannel by remember { mutableStateOf<Channel?>(null) }
+    var tvPreviewChannels by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var lastSelectedChannelId by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf(AllCategoryName) }
     var searchQuery by remember { mutableStateOf("") }
@@ -89,6 +96,11 @@ fun PayDaIptvApp() {
         }
 
         coroutineScope.launch {
+            if (!networkConnectivity.hasInternetConnection()) {
+                epgData = null
+                epgMessage = "Sin conexion a Internet"
+                return@launch
+            }
             epgMessage = "Cargando EPG..."
             runCatching { epgRepository.loadEpg(requestedUrl) }
                 .onSuccess { loadedEpg ->
@@ -121,6 +133,12 @@ fun PayDaIptvApp() {
             loadingMessage = message
             errorMessage = null
             epgMessage = null
+            if (!networkConnectivity.hasInternetConnection()) {
+                errorMessage = "Sin conexion a Internet"
+                loadingMessage = null
+                isLoading = false
+                return@launch
+            }
             runCatching { repository.loadPlaylist(requestedUrl) }
                 .onSuccess { loadedPlaylist ->
                     val loadedChannels = loadedPlaylist.channels
@@ -129,6 +147,9 @@ fun PayDaIptvApp() {
                     } else {
                         playlistUrl = requestedUrl
                         channels = loadedChannels
+                        tvScreen = TvScreen.HOME
+                        tvPreviewChannel = null
+                        tvPreviewChannels = emptyList()
                         selectedCategory = AllCategoryName
                         searchQuery = ""
                         settingsRepository.saveLastPlaylistUrl(requestedUrl)
@@ -227,32 +248,61 @@ fun PayDaIptvApp() {
                     lastSelectedChannelId = channelToPlay.stableFavoriteId()
                     selectedChannel = channelToPlay
                 }
+                val sharedOnChangePlaylist: () -> Unit = {
+                    channels = emptyList()
+                    epgData = null
+                    selectedChannel = null
+                    tvScreen = TvScreen.HOME
+                    tvPreviewChannel = null
+                    tvPreviewChannels = emptyList()
+                    lastSelectedChannelId = null
+                    selectedCategory = AllCategoryName
+                    errorMessage = null
+                    epgMessage = null
+                }
 
                 if (deviceType == DeviceType.TV) {
-                    TvChannelListScreen(
-                        channels = channels,
-                        selectedCategoryName = selectedCategory,
-                        searchQuery = searchQuery,
-                        favoriteChannelIds = favoriteChannelIds,
-                        epgData = epgData,
-                        epgNow = epgNow,
-                        epgMessage = epgMessage,
-                        lastSelectedChannelId = lastSelectedChannelId,
-                        onCategorySelected = { selectedCategory = it },
-                        onSearchQueryChange = { searchQuery = it },
-                        onClearSearch = { searchQuery = "" },
-                        onToggleFavorite = sharedOnToggleFavorite,
-                        onChannelSelected = sharedOnChannelSelected,
-                        onChangePlaylist = {
-                            channels = emptyList()
-                            epgData = null
-                            selectedChannel = null
-                            lastSelectedChannelId = null
-                            selectedCategory = AllCategoryName
-                            errorMessage = null
-                            epgMessage = null
-                        },
-                    )
+                    val previewChannel = tvPreviewChannel
+                    when {
+                        previewChannel != null -> TvChannelPreviewScreen(
+                            initialChannel = previewChannel,
+                            categoryChannels = tvPreviewChannels.ifEmpty { channels },
+                            favoriteChannelIds = favoriteChannelIds,
+                            epgData = epgData,
+                            epgNow = epgNow,
+                            onChannelChanged = { changedChannel ->
+                                lastSelectedChannelId = changedChannel.stableFavoriteId()
+                                tvPreviewChannel = changedChannel
+                            },
+                            onToggleFavorite = sharedOnToggleFavorite,
+                            onBackToGrid = { tvPreviewChannel = null },
+                        )
+                        tvScreen == TvScreen.HOME -> TvHomeScreen(
+                            channelCount = channels.size,
+                            onOpenLiveTv = { tvScreen = TvScreen.LIVE_TV },
+                            onChangePlaylist = sharedOnChangePlaylist,
+                        )
+                        else -> TvChannelListScreen(
+                            channels = channels,
+                            selectedCategoryName = selectedCategory,
+                            categorySearchQuery = searchQuery,
+                            favoriteChannelIds = favoriteChannelIds,
+                            epgData = epgData,
+                            epgNow = epgNow,
+                            epgMessage = epgMessage,
+                            lastSelectedChannelId = lastSelectedChannelId,
+                            onCategorySelected = { selectedCategory = it },
+                            onCategorySearchChange = { searchQuery = it },
+                            onClearCategorySearch = { searchQuery = "" },
+                            onToggleFavorite = sharedOnToggleFavorite,
+                            onChannelSelected = { channelToPreview, categoryChannels ->
+                                lastSelectedChannelId = channelToPreview.stableFavoriteId()
+                                tvPreviewChannel = channelToPreview
+                                tvPreviewChannels = categoryChannels
+                            },
+                            onBackToHome = { tvScreen = TvScreen.HOME },
+                        )
+                    }
                 } else {
                     ChannelListScreen(
                         channels = channels,
@@ -268,15 +318,7 @@ fun PayDaIptvApp() {
                         onClearSearch = { searchQuery = "" },
                         onToggleFavorite = sharedOnToggleFavorite,
                         onChannelSelected = sharedOnChannelSelected,
-                        onChangePlaylist = {
-                            channels = emptyList()
-                            epgData = null
-                            selectedChannel = null
-                            lastSelectedChannelId = null
-                            selectedCategory = AllCategoryName
-                            errorMessage = null
-                            epgMessage = null
-                        },
+                        onChangePlaylist = sharedOnChangePlaylist,
                     )
                 }
             }
@@ -293,6 +335,11 @@ fun PayDaIptvApp() {
             onBack = { selectedChannel = null },
         )
     }
+}
+
+private enum class TvScreen {
+    HOME,
+    LIVE_TV,
 }
 
 private fun hasEpgMatches(

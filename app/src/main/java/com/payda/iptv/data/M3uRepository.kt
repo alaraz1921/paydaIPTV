@@ -229,7 +229,7 @@ internal fun friendlyMessageForNetworkError(error: Exception): String = when (er
     is SSLProtocolException -> "El servidor no admite una conexion TLS compatible."
     is SSLException -> "No se ha podido establecer una conexion segura con el servidor."
     is UnknownHostException -> "No se ha podido encontrar el servidor."
-    is SocketTimeoutException -> "La conexion con el servidor ha agotado el tiempo de espera."
+    is SocketTimeoutException -> "El servidor esta tardando demasiado en responder."
     is java.net.ConnectException -> "No se ha podido conectar con el servidor."
     is IOException -> "No se ha podido descargar la lista M3U."
     else -> "No se ha podido cargar la lista M3U."

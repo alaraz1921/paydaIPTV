@@ -110,7 +110,7 @@ class M3uRepositoryTest {
 
         assertTrue(result.isFailure)
         assertEquals(
-            "La conexion con el servidor ha agotado el tiempo de espera.",
+            "El servidor esta tardando demasiado en responder.",
             result.exceptionOrNull()?.message,
         )
     }
@@ -130,7 +130,7 @@ class M3uRepositoryTest {
             friendlyMessageForNetworkError(UnknownHostException("missing.example")),
         )
         assertEquals(
-            "La conexion con el servidor ha agotado el tiempo de espera.",
+            "El servidor esta tardando demasiado en responder.",
             friendlyMessageForNetworkError(SocketTimeoutException("timeout")),
         )
     }

@@ -1,9 +1,9 @@
 package com.payda.iptv.ui.tv
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,18 +11,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -42,6 +43,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,58 +68,93 @@ import java.time.Instant
 fun TvChannelListScreen(
     channels: List<Channel>,
     selectedCategoryName: String,
-    searchQuery: String,
+    categorySearchQuery: String,
     favoriteChannelIds: Set<String>,
     epgData: EpgData?,
     epgNow: Instant,
     epgMessage: String?,
     lastSelectedChannelId: String?,
     onCategorySelected: (String) -> Unit,
-    onSearchQueryChange: (String) -> Unit,
-    onClearSearch: () -> Unit,
+    onCategorySearchChange: (String) -> Unit,
+    onClearCategorySearch: () -> Unit,
     onToggleFavorite: (Channel) -> Unit,
-    onChannelSelected: (Channel) -> Unit,
-    onChangePlaylist: () -> Unit,
+    onChannelSelected: (Channel, List<Channel>) -> Unit,
+    onBackToHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BackHandler(onBack = onBackToHome)
+
     val categories = remember(channels, favoriteChannelIds) {
         buildChannelCategories(channels, favoriteChannelIds)
+    }
+    val categorySearch = categorySearchQuery.trim()
+    val visibleCategories = remember(categories, categorySearch) {
+        if (categorySearch.isBlank()) {
+            categories
+        } else {
+            categories.filter { it.name.contains(categorySearch, ignoreCase = true) }
+        }.ifEmpty { categories.take(1) }
     }
     val selectedCategory = remember(categories, selectedCategoryName) {
         categories.firstOrNull { it.name == selectedCategoryName } ?: categories.first()
     }
-    val visibleChannels = remember(channels, selectedCategory, searchQuery, favoriteChannelIds) {
+    val visibleChannels = remember(channels, selectedCategory, favoriteChannelIds) {
         filterChannels(
             channels = channels,
             selectedCategoryName = selectedCategory.name,
-            searchQuery = searchQuery,
+            searchQuery = "",
             favoriteChannelIds = favoriteChannelIds,
         )
     }
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
     val firstChannelFocusRequester = remember { FocusRequester() }
+    val channelFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
 
-    LaunchedEffect(selectedCategory.name, visibleChannels, lastSelectedChannelId) {
-        if (visibleChannels.isNotEmpty()) {
-            firstChannelFocusRequester.requestFocus()
-        }
+    LaunchedEffect(Unit) {
+        selectedCategoryFocusRequester.requestFocus()
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF101418))
-            .padding(horizontal = 48.dp, vertical = 36.dp),
+            .background(TvBackground)
+            .padding(horizontal = 42.dp, vertical = 30.dp),
     ) {
-        Text(
-            text = "PayDa IPTV",
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Button(onClick = onChangePlaylist) {
-            Text("Cambiar lista")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Text(
+                text = "PayDa IPTV",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            OutlinedTextField(
+                value = categorySearchQuery,
+                onValueChange = onCategorySearchChange,
+                modifier = Modifier.weight(1f),
+                label = { Text("Buscar categoria") },
+                singleLine = true,
+                trailingIcon = {
+                    if (categorySearchQuery.isNotBlank()) {
+                        TextButton(onClick = onClearCategorySearch) {
+                            Text("Limpiar")
+                        }
+                    }
+                },
+            )
+            Text(
+                text = selectedCategory.name,
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
+
         if (!epgMessage.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -122,111 +163,154 @@ fun TvChannelListScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(
-            text = "Categorias",
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(categories, key = { it.name }) { category ->
-                TvCategoryChip(
-                    category = category,
-                    selected = category.name == selectedCategory.name,
-                    onClick = { onCategorySelected(category.name) },
-                )
-            }
-        }
+
         Spacer(modifier = Modifier.height(18.dp))
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Buscar canal") },
-            singleLine = true,
-            trailingIcon = {
-                if (searchQuery.isNotBlank()) {
-                    TextButton(onClick = onClearSearch) {
-                        Text("Limpiar")
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+            LazyColumn(
+                modifier = Modifier.width(285.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(visibleCategories, key = { it.name }) { category ->
+                    TvCategoryRow(
+                        category = category,
+                        selected = category.name == selectedCategory.name,
+                        modifier = if (category.name == selectedCategory.name) {
+                            Modifier.focusRequester(selectedCategoryFocusRequester)
+                        } else {
+                            Modifier
+                        },
+                        onMoveRight = {
+                            if (visibleChannels.isNotEmpty()) {
+                                val targetId = lastSelectedChannelId?.takeIf { id ->
+                                    visibleChannels.any { it.stableFavoriteId() == id }
+                                } ?: visibleChannels.first().stableFavoriteId()
+                                channelFocusRequesters[targetId]?.requestFocus()
+                                    ?: firstChannelFocusRequester.requestFocus()
+                            }
+                        },
+                        onClick = { onCategorySelected(category.name) },
+                    )
+                }
+            }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (visibleChannels.isEmpty()) {
+                    item {
+                        TvEmptyState(selectedCategory.name)
                     }
                 }
-            },
-        )
-        Spacer(modifier = Modifier.height(18.dp))
-        Text(
-            text = "Canales (${visibleChannels.size})",
-            color = Color.White,
-            style = MaterialTheme.typography.titleLarge,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (visibleChannels.isEmpty()) {
-                item {
-                    TvEmptyState(selectedCategory.name, searchQuery)
-                }
-            }
-            itemsIndexed(visibleChannels, key = { _, channel -> channel.stableFavoriteId() }) { index, channel ->
-                val hasPreviousSelection = visibleChannels.any {
-                    it.stableFavoriteId() == lastSelectedChannelId
-                }
-                val shouldRequestFocus = if (hasPreviousSelection) {
-                    channel.stableFavoriteId() == lastSelectedChannelId
-                } else {
-                    index == 0
-                }
-                TvChannelRow(
-                    channel = channel,
-                    isFavorite = channel.stableFavoriteId() in favoriteChannelIds,
-                    epgData = epgData,
-                    epgNow = epgNow,
-                    modifier = if (shouldRequestFocus) {
-                        Modifier.focusRequester(firstChannelFocusRequester)
+                itemsIndexed(
+                    visibleChannels,
+                    key = { _, channel -> channel.stableFavoriteId() },
+                ) { index, channel ->
+                    val channelId = channel.stableFavoriteId()
+                    val rememberedFocusRequester = remember(channelId) { FocusRequester() }
+                    val shouldRequestInitialFocus = if (lastSelectedChannelId != null) {
+                        channelId == lastSelectedChannelId
                     } else {
-                        Modifier
-                    },
-                    onToggleFavorite = { onToggleFavorite(channel) },
-                    onClick = { onChannelSelected(channel) },
-                )
+                        index == 0
+                    }
+                    val attachedFocusRequester = if (shouldRequestInitialFocus) {
+                        firstChannelFocusRequester
+                    } else {
+                        rememberedFocusRequester
+                    }
+                    channelFocusRequesters[channelId] = attachedFocusRequester
+                    TvChannelCard(
+                        channel = channel,
+                        isFavorite = channelId in favoriteChannelIds,
+                        epgData = epgData,
+                        epgNow = epgNow,
+                        modifier = Modifier
+                            .focusRequester(
+                                attachedFocusRequester,
+                            )
+                            .onPreviewKeyEvent { event ->
+                                if (
+                                    event.type == KeyEventType.KeyDown &&
+                                    event.key == Key.DirectionLeft &&
+                                    index % 3 == 0
+                                ) {
+                                    selectedCategoryFocusRequester.requestFocus()
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onClick = { onChannelSelected(channel, visibleChannels) },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TvCategoryChip(
+private fun TvCategoryRow(
     category: ChannelCategory,
     selected: Boolean,
+    modifier: Modifier = Modifier,
+    onMoveRight: () -> Unit,
     onClick: () -> Unit,
 ) {
     var hasFocus by remember { mutableStateOf(false) }
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        modifier = Modifier
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
             .onFocusChanged { hasFocus = it.hasFocus }
-            .border(
-                border = BorderStroke(
-                    width = if (hasFocus) 3.dp else 0.dp,
-                    color = if (hasFocus) Color.White else Color.Transparent,
-                ),
-                shape = RoundedCornerShape(8.dp),
-            ),
-        label = {
-            Text(
-                text = "${category.name} (${category.count})",
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
+                    onMoveRight()
+                    true
+                } else {
+                    false
+                }
+            }
+            .focusable()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = when {
+            hasFocus -> Color(0xFF26374A)
+            selected -> Color(0xFF1F2933)
+            else -> Color.Transparent
         },
-    )
+        border = if (hasFocus) BorderStroke(2.dp, Color.White) else null,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = category.name,
+                modifier = Modifier.weight(1f),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = category.count.toString(),
+                color = Color(0xFFCBD5E1),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
+    }
 }
 
 @Composable
-private fun TvChannelRow(
+private fun TvChannelCard(
     channel: Channel,
     isFavorite: Boolean,
     epgData: EpgData?,
@@ -236,66 +320,71 @@ private fun TvChannelRow(
     onClick: () -> Unit,
 ) {
     var hasFocus by remember { mutableStateOf(false) }
+    val epgInfo = epgData?.programmeFor(channel, epgNow)
+    val currentProgramme = epgInfo?.current
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(76.dp)
+            .aspectRatio(1.55f)
             .onFocusChanged { hasFocus = it.hasFocus }
             .focusable()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        color = if (hasFocus) Color(0xFF26374A) else Color(0xFF172028),
-        border = if (hasFocus) BorderStroke(3.dp, Color.White) else null,
+        color = if (hasFocus) Color(0xFF26374A) else Color(0xFF151C22),
+        border = BorderStroke(
+            width = if (hasFocus) 3.dp else 1.dp,
+            color = if (hasFocus) Color.White else Color(0xFF2F3B46),
+        ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            TvChannelLogo(
-                logoUrl = channel.logoUrl,
-                channelName = channel.name,
-                modifier = Modifier.size(52.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0xFF10161B)),
+                contentAlignment = Alignment.Center,
+            ) {
+                TvChannelLogo(
+                    logoUrl = channel.logoUrl,
+                    channelName = channel.name,
+                    modifier = Modifier.size(88.dp),
+                )
+                TextButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                ) {
+                    Text(if (isFavorite) "*" else "+")
+                }
+            }
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 Text(
                     text = channel.name,
                     color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val epgInfo = epgData?.programmeFor(channel, epgNow)
-                val currentProgramme = epgInfo?.current
                 if (currentProgramme != null) {
                     Text(
                         text = "${currentProgramme.title} · ${currentProgramme.timeRangeText()}",
                         color = Color(0xFFCBD5E1),
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                val nextProgramme = epgInfo?.next
-                if (nextProgramme != null) {
-                    Text(
-                        text = "Despues: ${nextProgramme.title}",
-                        color = Color(0xFFCBD5E1),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            TextButton(onClick = onToggleFavorite) {
-                Text(if (isFavorite) "★" else "☆")
             }
         }
     }
 }
 
 @Composable
-private fun TvChannelLogo(
+internal fun TvChannelLogo(
     logoUrl: String?,
     channelName: String,
     modifier: Modifier = Modifier,
@@ -305,7 +394,7 @@ private fun TvChannelLogo(
     }
 
     Box(
-        modifier = modifier.background(Color(0xFF2A333C), RoundedCornerShape(8.dp)),
+        modifier = modifier.background(Color(0xFF26313A), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (logo.value != null) {
@@ -319,7 +408,8 @@ private fun TvChannelLogo(
             Text(
                 text = channelName.firstOrNull()?.uppercase() ?: "?",
                 color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
             )
         }
     }
@@ -328,15 +418,11 @@ private fun TvChannelLogo(
 @Composable
 private fun TvEmptyState(
     selectedCategoryName: String,
-    searchQuery: String,
 ) {
-    val message = when {
-        selectedCategoryName == FavoriteCategoryName && searchQuery.isBlank() ->
-            "Todavia no tienes canales favoritos."
-        searchQuery.isNotBlank() ->
-            "No hay canales que coincidan con la busqueda."
-        else ->
-            "No hay canales en esta categoria."
+    val message = when (selectedCategoryName) {
+        FavoriteCategoryName -> "Todavia no tienes canales favoritos."
+        AllCategoryName -> "No hay canales disponibles."
+        else -> "No hay canales en esta categoria."
     }
 
     Text(

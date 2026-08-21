@@ -48,7 +48,7 @@ class EpgRepository(
             }
             connection.getInputStream().bufferedReader().use { it.readText() }
         } catch (error: SocketTimeoutException) {
-            throw EpgLoadException("La descarga EPG ha agotado el tiempo de espera.", error)
+            throw EpgLoadException("El servidor EPG esta tardando demasiado en responder.", error)
         } catch (error: UnknownHostException) {
             throw EpgLoadException("No se pudo encontrar el servidor de la EPG.", error)
         } catch (error: XmlTvParseException) {
