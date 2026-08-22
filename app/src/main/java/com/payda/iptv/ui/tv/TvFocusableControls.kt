@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,11 +44,13 @@ fun TvFocusableButton(
         enabled = enabled,
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 18.dp),
-            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = text,
+                text = text.uppercase(),
                 color = if (enabled) Color.White else TvDisabledText,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,

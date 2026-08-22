@@ -79,7 +79,7 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playbackMessage = "No se pudo cargar el canal: ${error.errorCodeName}"
+                playbackMessage = playbackErrorMessage(error, "este canal")
             }
         }
         val observer = LifecycleEventObserver { _, event ->
@@ -177,15 +177,7 @@ fun PlayerScreen(
         }
 
         if (playbackMessage.isNotBlank()) {
-            Text(
-                text = playbackMessage,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(24.dp),
-                color = Color.White,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-            )
+            PlaybackOverlayMessage(playbackMessage)
         }
     }
 }

@@ -27,6 +27,7 @@ import com.payda.iptv.ui.theme.PayDaCard
 import com.payda.iptv.ui.theme.PayDaSurface
 import com.payda.iptv.ui.theme.PayDaTextPrimary
 import com.payda.iptv.ui.theme.PayDaTextSecondary
+import com.payda.iptv.ui.tv.TvFocusableButton
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -86,7 +87,11 @@ fun AccountScreen(
             }
         }
         Spacer(modifier = Modifier.height(18.dp))
-        PayDaButton(text = "Volver", onClick = onBack)
+        if (isTv) {
+            TvFocusableButton(text = "Volver", onClick = onBack, modifier = Modifier.fillMaxWidth())
+        } else {
+            PayDaButton(text = "Volver", onClick = onBack, modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 

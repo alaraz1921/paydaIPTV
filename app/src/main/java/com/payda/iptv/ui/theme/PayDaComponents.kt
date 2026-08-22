@@ -51,7 +51,7 @@ fun PayDaButton(
         ),
     ) {
         Text(
-            text = text,
+            text = text.uppercase(),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
         )

@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -171,6 +172,15 @@ fun MovieCatalogScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (visibleMovies.isEmpty()) {
+                    item {
+                        Text(
+                            text = if (selectedCategoryId == MovieFavoritesCategory) "No tienes favoritos." else "No hay peliculas en esta categoria.",
+                            color = PayDaTextSecondary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
                 items(visibleMovies, key = { it.favoriteId }) { movie ->
                     MoviePosterCard(
                         movie = movie,
@@ -331,6 +341,7 @@ fun MoviePlayerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var playbackMessage by remember(movie.streamUrl) { mutableStateOf("Cargando ${movie.name}...") }
     val player = remember(movie.streamUrl) {
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
@@ -356,24 +367,33 @@ fun MoviePlayerScreen(
         }
     }
 
-    fun persistProgressAndBack() {
+    fun currentProgress(): MovieProgress? {
         val duration = player.duration.coerceAtLeast(0L)
         val position = player.currentPosition.coerceAtLeast(0L)
-        onSaveProgress(
-            if (
-                duration > 0 &&
-                position >= MovieProgress.MinimumResumeMillis &&
-                position.toDouble() < duration * MovieProgress.WatchedThreshold
-            ) {
-                MovieProgress(movie.favoriteId, position, duration)
-            } else {
-                null
-            },
-        )
+        return if (
+            duration > 0 &&
+            position >= MovieProgress.MinimumResumeMillis &&
+            position.toDouble() < duration * MovieProgress.WatchedThreshold
+        ) {
+            MovieProgress(movie.favoriteId, position, duration)
+        } else {
+            null
+        }
+    }
+
+    fun persistProgressAndBack() {
+        onSaveProgress(currentProgress())
         onBack()
     }
 
     BackHandler { persistProgressAndBack() }
+
+    LaunchedEffect(player, movie.favoriteId) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            currentProgress()?.let(onSaveProgress)
+        }
+    }
 
     DisposableEffect(lifecycleOwner, player) {
         var videoDecoder = "Desconocido"
@@ -414,8 +434,14 @@ fun MoviePlayerScreen(
             when (event) {
                 Lifecycle.Event.ON_START -> if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.play()
                 Lifecycle.Event.ON_RESUME -> if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.play()
-                Lifecycle.Event.ON_PAUSE -> if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.pause()
-                Lifecycle.Event.ON_STOP -> if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.pause()
+                Lifecycle.Event.ON_PAUSE -> {
+                    onSaveProgress(currentProgress())
+                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.pause()
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    onSaveProgress(currentProgress())
+                    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.pause()
+                }
                 else -> Unit
             }
         }
@@ -425,6 +451,13 @@ fun MoviePlayerScreen(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                playbackMessage = when (playbackState) {
+                    Player.STATE_BUFFERING -> "Cargando ${movie.name}..."
+                    Player.STATE_READY -> ""
+                    Player.STATE_ENDED -> "Reproduccion finalizada"
+                    Player.STATE_IDLE -> "Reproductor preparado"
+                    else -> playbackMessage
+                }
                 if (playbackState == Player.STATE_BUFFERING && player.playWhenReady) {
                     rebuffers += 1
                     logMovieDiagnostics(movie, player, videoDecoder, audioDecoder, droppedFrames, rebuffers)
@@ -432,6 +465,10 @@ fun MoviePlayerScreen(
                 if (playbackState == Player.STATE_ENDED) {
                     onSaveProgress(null)
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playbackMessage = playbackErrorMessage(error, "esta pelicula")
             }
         }
         player.addListener(listener)
@@ -462,6 +499,9 @@ fun MoviePlayerScreen(
             },
             update = { it.player = player },
         )
+        if (playbackMessage.isNotBlank()) {
+            PlaybackOverlayMessage(playbackMessage)
+        }
     }
 }
 

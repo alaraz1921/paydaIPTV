@@ -54,6 +54,7 @@ import com.payda.iptv.data.stableFavoriteId
 import com.payda.iptv.epg.EpgData
 import com.payda.iptv.epg.timeRangeText
 import com.payda.iptv.ui.playlist.buildMediaItem
+import com.payda.iptv.ui.playlist.playbackErrorMessage
 import java.time.Instant
 
 @OptIn(UnstableApi::class)
@@ -109,7 +110,7 @@ fun TvChannelPreviewScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playbackMessage = "No se pudo cargar el canal: ${error.errorCodeName}"
+                playbackMessage = playbackErrorMessage(error, "este canal")
             }
         }
         val observer = LifecycleEventObserver { _, event ->

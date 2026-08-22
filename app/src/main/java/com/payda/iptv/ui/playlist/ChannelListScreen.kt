@@ -1,6 +1,7 @@
 package com.payda.iptv.ui.playlist
 
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import com.payda.iptv.ui.theme.PayDaSurface
 import com.payda.iptv.ui.theme.PayDaSurfaceHigh
 import com.payda.iptv.ui.theme.PayDaTextPrimary
 import com.payda.iptv.ui.theme.PayDaTextSecondary
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -324,12 +326,35 @@ private fun ChannelLogo(
 }
 
 internal suspend fun loadChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
+    ImageCache.get(url)?.let { return@withContext it }
     runCatching {
-        URL(url).openStream().use { input ->
-            BitmapFactory.decodeStream(input)?.asImageBitmap()
+        val bytes = URL(url).openStream().use { input ->
+            ByteArrayOutputStream().use { output ->
+                input.copyTo(output, bufferSize = 8 * 1024)
+                output.toByteArray()
+            }
         }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = calculateImageSampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            ?.asImageBitmap()
+            ?.also { image -> ImageCache.put(url, image) }
     }.getOrNull()
 }
+
+private fun calculateImageSampleSize(width: Int, height: Int): Int {
+    var sampleSize = 1
+    while (width / sampleSize > MaxImageDimension || height / sampleSize > MaxImageDimension) {
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+private const val MaxImageDimension = 512
+private val ImageCache = object : LruCache<String, ImageBitmap>(96) {}
 
 internal const val AllCategoryName = "Todos"
 internal const val FavoriteCategoryName = "Favoritos"

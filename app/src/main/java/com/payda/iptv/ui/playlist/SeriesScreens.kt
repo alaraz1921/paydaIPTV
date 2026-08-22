@@ -27,8 +27,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -42,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -183,6 +186,15 @@ fun SeriesCatalogScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (visibleSeries.isEmpty()) {
+                    item {
+                        Text(
+                            text = if (selectedCategoryId == SeriesFavoritesCategory) "No tienes favoritos." else "No hay series disponibles.",
+                            color = PayDaTextSecondary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
                 items(visibleSeries, key = { it.favoriteId }) { item ->
                     SeriesPosterCard(
                         series = item,
@@ -474,6 +486,7 @@ fun EpisodePlayerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var playbackMessage by remember(episode.streamUrl) { androidx.compose.runtime.mutableStateOf("Cargando ${episode.title}...") }
     val player = remember(episode.streamUrl) {
         val renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         val loadControl = DefaultLoadControl.Builder()
@@ -515,21 +528,45 @@ fun EpisodePlayerScreen(
         onBack()
     }
 
+    androidx.compose.runtime.LaunchedEffect(player, episode.progressId) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            currentProgress()?.let(onSaveProgress)
+        }
+    }
+
     DisposableEffect(lifecycleOwner, player) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.play()
                 Lifecycle.Event.ON_RESUME -> if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.play()
-                Lifecycle.Event.ON_PAUSE -> if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.pause()
-                Lifecycle.Event.ON_STOP -> if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.pause()
+                Lifecycle.Event.ON_PAUSE -> {
+                    onSaveProgress(currentProgress())
+                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) player.pause()
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    onSaveProgress(currentProgress())
+                    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) player.pause()
+                }
                 else -> Unit
             }
         }
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                playbackMessage = when (playbackState) {
+                    Player.STATE_BUFFERING -> "Cargando ${episode.title}..."
+                    Player.STATE_READY -> ""
+                    Player.STATE_ENDED -> "Reproduccion finalizada"
+                    Player.STATE_IDLE -> "Reproductor preparado"
+                    else -> playbackMessage
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     onSaveProgress(EpisodeProgress(episode.progressId, 0L, player.duration.coerceAtLeast(0L), watched = true))
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playbackMessage = playbackErrorMessage(error, "este episodio")
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -554,6 +591,9 @@ fun EpisodePlayerScreen(
             },
             update = { it.player = player },
         )
+        if (playbackMessage.isNotBlank()) {
+            PlaybackOverlayMessage(playbackMessage)
+        }
         if (hasNextEpisode) {
             PayDaButton(
                 text = "Reproducir siguiente episodio",
